@@ -75,19 +75,20 @@ const FactoryLayout: React.FC = () => {
 
   // Reposition slots in a grid layout
   const repositionSlotsInGrid = useCallback((slots: FactorySlot[], dimensions: { width: number; height: number }) => {
-    const gap = 20;
-    const startX = 30;
-    const startY = 40;
+    const gapX = 40; // Horizontal gap between cards
+    const gapY = 50; // Vertical gap between cards
+    const startX = 40;
+    const startY = 50;
     const containerWidth = 900; // Approximate container width
     
-    const cols = Math.max(1, Math.floor((containerWidth - startX) / (dimensions.width + gap)));
+    const cols = Math.max(1, Math.floor((containerWidth - startX) / (dimensions.width + gapX)));
     
     return slots.map((slot, index) => ({
       ...slot,
       width: dimensions.width,
       height: dimensions.height,
-      x: startX + (index % cols) * (dimensions.width + gap),
-      y: startY + Math.floor(index / cols) * (dimensions.height + gap + 20), // +20 for label
+      x: startX + (index % cols) * (dimensions.width + gapX),
+      y: startY + Math.floor(index / cols) * (dimensions.height + gapY),
     }));
   }, []);
 
