@@ -73,6 +73,24 @@ const FactoryLayout: React.FC = () => {
     };
   }, []);
 
+  // Reposition slots in a grid layout
+  const repositionSlotsInGrid = useCallback((slots: FactorySlot[], dimensions: { width: number; height: number }) => {
+    const gap = 20;
+    const startX = 30;
+    const startY = 40;
+    const containerWidth = 900; // Approximate container width
+    
+    const cols = Math.max(1, Math.floor((containerWidth - startX) / (dimensions.width + gap)));
+    
+    return slots.map((slot, index) => ({
+      ...slot,
+      width: dimensions.width,
+      height: dimensions.height,
+      x: startX + (index % cols) * (dimensions.width + gap),
+      y: startY + Math.floor(index / cols) * (dimensions.height + gap + 20), // +20 for label
+    }));
+  }, []);
+
   // Update every second for timers
   useEffect(() => {
     const interval = setInterval(() => setTick(t => t + 1), 1000);
@@ -94,44 +112,33 @@ const FactoryLayout: React.FC = () => {
   const handleAddSlot = (e: React.MouseEvent<HTMLDivElement>) => {
     if (!editMode) return;
     
-    const rect = e.currentTarget.getBoundingClientRect();
-    const x = (e.clientX - rect.left) / zoom;
-    const y = (e.clientY - rect.top) / zoom;
-
     const dimensions = getSlotDimensions(currentSlots.length + 1);
     
     const newSlot: FactorySlot = {
       id: `slot-${activeFloor}-${Date.now()}`,
       name: `${activeFloor === 1 ? 'V' : 'A'}-${String(currentSlots.length + 1).padStart(2, '0')}`,
-      x,
-      y,
+      x: 0,
+      y: 0,
       width: dimensions.width,
       height: dimensions.height,
       containerId: null,
     };
 
-    // Update all existing slots to new dimensions
-    const updatedSlots = currentSlots.map(slot => ({
-      ...slot,
-      width: dimensions.width,
-      height: dimensions.height,
-    }));
+    // Add new slot and reposition all in grid
+    const allSlots = [...currentSlots, newSlot];
+    const repositionedSlots = repositionSlotsInGrid(allSlots, dimensions);
 
-    setCurrentSlots([...updatedSlots, newSlot]);
+    setCurrentSlots(repositionedSlots);
   };
 
   const handleDeleteSlot = (slotId: string) => {
     const remainingSlots = currentSlots.filter(s => s.id !== slotId);
     const dimensions = getSlotDimensions(remainingSlots.length);
     
-    // Resize remaining slots
-    const resizedSlots = remainingSlots.map(slot => ({
-      ...slot,
-      width: dimensions.width,
-      height: dimensions.height,
-    }));
+    // Reposition remaining slots in grid
+    const repositionedSlots = repositionSlotsInGrid(remainingSlots, dimensions);
     
-    setCurrentSlots(resizedSlots);
+    setCurrentSlots(repositionedSlots);
   };
 
   const handleContainerDragStart = (containerId: number) => {
