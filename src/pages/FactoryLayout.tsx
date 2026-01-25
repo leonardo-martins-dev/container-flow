@@ -57,6 +57,22 @@ const FactoryLayout: React.FC = () => {
   const currentSlots = activeFloor === 1 ? factorySlots : factorySlots2;
   const setCurrentSlots = activeFloor === 1 ? updateFactorySlots : updateFactorySlots2;
 
+  // Dynamic slot sizing based on count
+  const getSlotDimensions = useCallback((slotCount: number) => {
+    const minWidth = 160;
+    const maxWidth = 280;
+    const minHeight = 100;
+    const maxHeight = 160;
+    
+    // Scale down as more slots are added (optimal at 6-8 slots)
+    const scaleFactor = Math.max(0.6, Math.min(1, 8 / Math.max(slotCount, 1)));
+    
+    return {
+      width: Math.round(minWidth + (maxWidth - minWidth) * scaleFactor),
+      height: Math.round(minHeight + (maxHeight - minHeight) * scaleFactor),
+    };
+  }, []);
+
   // Update every second for timers
   useEffect(() => {
     const interval = setInterval(() => setTick(t => t + 1), 1000);
@@ -82,21 +98,40 @@ const FactoryLayout: React.FC = () => {
     const x = (e.clientX - rect.left) / zoom;
     const y = (e.clientY - rect.top) / zoom;
 
+    const dimensions = getSlotDimensions(currentSlots.length + 1);
+    
     const newSlot: FactorySlot = {
       id: `slot-${activeFloor}-${Date.now()}`,
       name: `${activeFloor === 1 ? 'V' : 'A'}-${String(currentSlots.length + 1).padStart(2, '0')}`,
       x,
       y,
-      width: 200,
-      height: 120,
+      width: dimensions.width,
+      height: dimensions.height,
       containerId: null,
     };
 
-    setCurrentSlots([...currentSlots, newSlot]);
+    // Update all existing slots to new dimensions
+    const updatedSlots = currentSlots.map(slot => ({
+      ...slot,
+      width: dimensions.width,
+      height: dimensions.height,
+    }));
+
+    setCurrentSlots([...updatedSlots, newSlot]);
   };
 
   const handleDeleteSlot = (slotId: string) => {
-    setCurrentSlots(currentSlots.filter(s => s.id !== slotId));
+    const remainingSlots = currentSlots.filter(s => s.id !== slotId);
+    const dimensions = getSlotDimensions(remainingSlots.length);
+    
+    // Resize remaining slots
+    const resizedSlots = remainingSlots.map(slot => ({
+      ...slot,
+      width: dimensions.width,
+      height: dimensions.height,
+    }));
+    
+    setCurrentSlots(resizedSlots);
   };
 
   const handleContainerDragStart = (containerId: number) => {
@@ -193,6 +228,7 @@ const FactoryLayout: React.FC = () => {
                 getActiveProcess={getActiveProcess}
                 processes={processes}
                 removeContainerFromSlot={removeContainerFromSlot}
+                slotDimensions={getSlotDimensions(factorySlots.length)}
               />
             </TabsContent>
 
@@ -210,6 +246,7 @@ const FactoryLayout: React.FC = () => {
                 getActiveProcess={getActiveProcess}
                 processes={processes}
                 removeContainerFromSlot={removeContainerFromSlot}
+                slotDimensions={getSlotDimensions(factorySlots2.length)}
               />
             </TabsContent>
           </Tabs>
@@ -294,6 +331,7 @@ interface FactoryFloorProps {
   getActiveProcess: (container: Container) => { stage: any; process: any; worker: any } | null;
   processes: any[];
   removeContainerFromSlot: (containerId: number) => void;
+  slotDimensions: { width: number; height: number };
 }
 
 const FactoryFloor: React.FC<FactoryFloorProps> = ({
@@ -309,6 +347,7 @@ const FactoryFloor: React.FC<FactoryFloorProps> = ({
   getActiveProcess,
   processes,
   removeContainerFromSlot,
+  slotDimensions,
 }) => {
   return (
     <Card className="glass overflow-hidden">
@@ -346,8 +385,9 @@ const FactoryFloor: React.FC<FactoryFloorProps> = ({
                 style={{
                   left: slot.x,
                   top: slot.y,
-                  width: slot.width,
-                  height: slot.height,
+                  width: slotDimensions.width,
+                  height: slotDimensions.height,
+                  transition: 'width 0.3s ease, height 0.3s ease',
                 }}
                 onDragOver={(e) => {
                   e.preventDefault();
