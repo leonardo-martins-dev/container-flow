@@ -87,8 +87,8 @@ const FactoryLayout: React.FC = () => {
       name: `${activeFloor === 1 ? 'V' : 'A'}-${String(currentSlots.length + 1).padStart(2, '0')}`,
       x,
       y,
-      width: 180,
-      height: 80,
+      width: 200,
+      height: 120,
       containerId: null,
     };
 
@@ -381,24 +381,24 @@ const FactoryFloor: React.FC<FactoryFloorProps> = ({
 
                 {/* Container Content */}
                 {container && (
-                  <div className="p-2 h-full flex flex-col justify-between">
-                    <div className="flex items-start justify-between">
-                      <div>
-                        <p className="font-bold text-sm">{container.number}</p>
-                        <p className="text-xs text-muted-foreground">{container.type}</p>
+                  <div className="p-2 h-full flex flex-col overflow-hidden">
+                    <div className="flex items-start justify-between gap-1 flex-shrink-0">
+                      <div className="min-w-0 flex-1">
+                        <p className="font-bold text-sm truncate">{container.number}</p>
+                        <p className="text-xs text-muted-foreground truncate">{container.type}</p>
                       </div>
-                      <Badge variant="outline" className="text-xs">
+                      <Badge variant="outline" className="text-xs flex-shrink-0">
                         {progress}%
                       </Badge>
                     </div>
 
                     {activeProcess && (
-                      <div className="mt-1 p-1.5 rounded bg-muted/50">
-                        <div className="flex items-center justify-between">
-                          <span className="text-xs truncate">{activeProcess.process?.name}</span>
+                      <div className="mt-1.5 p-1.5 rounded bg-muted/50 flex-1 min-h-0 overflow-hidden">
+                        <div className="flex items-center justify-between gap-1">
+                          <span className="text-xs truncate flex-1 min-w-0">{activeProcess.process?.name}</span>
                           <span
                             className={cn(
-                              'text-xs font-mono font-bold',
+                              'text-xs font-mono font-bold flex-shrink-0',
                               getElapsedPercentage(activeProcess.stage, activeProcess.process) >= 95
                                 ? 'text-destructive animate-blink'
                                 : 'text-primary'
@@ -410,7 +410,7 @@ const FactoryFloor: React.FC<FactoryFloorProps> = ({
                         {activeProcess.worker && (
                           <div className="flex items-center gap-1 mt-1">
                             <div
-                              className="w-2 h-2 rounded-full"
+                              className="w-2 h-2 rounded-full flex-shrink-0"
                               style={{ backgroundColor: getWorkerColor(activeProcess.worker.id) }}
                             />
                             <span className="text-xs text-muted-foreground truncate">
@@ -426,7 +426,7 @@ const FactoryFloor: React.FC<FactoryFloorProps> = ({
                       <Button
                         variant="ghost"
                         size="sm"
-                        className="absolute bottom-1 right-1 w-6 h-6 p-0"
+                        className="absolute bottom-1 right-1 w-6 h-6 p-0 opacity-60 hover:opacity-100"
                         onClick={() => removeContainerFromSlot(container.id)}
                       >
                         <Trash2 className="w-3 h-3" />
