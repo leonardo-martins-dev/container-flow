@@ -57,40 +57,9 @@ const FactoryLayout: React.FC = () => {
   const currentSlots = activeFloor === 1 ? factorySlots : factorySlots2;
   const setCurrentSlots = activeFloor === 1 ? updateFactorySlots : updateFactorySlots2;
 
-  // Dynamic slot sizing based on count
-  const getSlotDimensions = useCallback((slotCount: number) => {
-    const minWidth = 160;
-    const maxWidth = 280;
-    const minHeight = 100;
-    const maxHeight = 160;
-    
-    // Scale down as more slots are added (optimal at 6-8 slots)
-    const scaleFactor = Math.max(0.6, Math.min(1, 8 / Math.max(slotCount, 1)));
-    
-    return {
-      width: Math.round(minWidth + (maxWidth - minWidth) * scaleFactor),
-      height: Math.round(minHeight + (maxHeight - minHeight) * scaleFactor),
-    };
-  }, []);
-
-  // Reposition slots in a grid layout
-  const repositionSlotsInGrid = useCallback((slots: FactorySlot[], dimensions: { width: number; height: number }) => {
-    const gapX = 40; // Horizontal gap between cards
-    const gapY = 50; // Vertical gap between cards
-    const startX = 40;
-    const startY = 50;
-    const containerWidth = 900; // Approximate container width
-    
-    const cols = Math.max(1, Math.floor((containerWidth - startX) / (dimensions.width + gapX)));
-    
-    return slots.map((slot, index) => ({
-      ...slot,
-      width: dimensions.width,
-      height: dimensions.height,
-      x: startX + (index % cols) * (dimensions.width + gapX),
-      y: startY + Math.floor(index / cols) * (dimensions.height + gapY),
-    }));
-  }, []);
+  // Fixed slot dimensions for better visibility
+  const slotWidth = 220;
+  const slotHeight = 140;
 
   // Update every second for timers
   useEffect(() => {
@@ -110,36 +79,54 @@ const FactoryLayout: React.FC = () => {
     return !inSlot1 && !inSlot2;
   });
 
-  const handleAddSlot = (e: React.MouseEvent<HTMLDivElement>) => {
+  // Add slot at clicked position
+  const handleAddSlotAtPosition = (e: React.MouseEvent<HTMLDivElement>) => {
     if (!editMode) return;
     
-    const dimensions = getSlotDimensions(currentSlots.length + 1);
-    
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = Math.max(20, (e.clientX - rect.left) / zoom - slotWidth / 2);
+    const y = Math.max(30, (e.clientY - rect.top) / zoom - slotHeight / 2);
+
     const newSlot: FactorySlot = {
       id: `slot-${activeFloor}-${Date.now()}`,
       name: `${activeFloor === 1 ? 'V' : 'A'}-${String(currentSlots.length + 1).padStart(2, '0')}`,
-      x: 0,
-      y: 0,
-      width: dimensions.width,
-      height: dimensions.height,
+      x,
+      y,
+      width: slotWidth,
+      height: slotHeight,
       containerId: null,
     };
 
-    // Add new slot and reposition all in grid
-    const allSlots = [...currentSlots, newSlot];
-    const repositionedSlots = repositionSlotsInGrid(allSlots, dimensions);
+    setCurrentSlots([...currentSlots, newSlot]);
+  };
 
-    setCurrentSlots(repositionedSlots);
+  // Add slot with auto-positioning (button click)
+  const handleAddSlotButton = () => {
+    const gapX = 40;
+    const gapY = 50;
+    const startX = 40;
+    const startY = 50;
+    const cols = 3;
+    
+    const index = currentSlots.length;
+    const x = startX + (index % cols) * (slotWidth + gapX);
+    const y = startY + Math.floor(index / cols) * (slotHeight + gapY);
+
+    const newSlot: FactorySlot = {
+      id: `slot-${activeFloor}-${Date.now()}`,
+      name: `${activeFloor === 1 ? 'V' : 'A'}-${String(currentSlots.length + 1).padStart(2, '0')}`,
+      x,
+      y,
+      width: slotWidth,
+      height: slotHeight,
+      containerId: null,
+    };
+
+    setCurrentSlots([...currentSlots, newSlot]);
   };
 
   const handleDeleteSlot = (slotId: string) => {
-    const remainingSlots = currentSlots.filter(s => s.id !== slotId);
-    const dimensions = getSlotDimensions(remainingSlots.length);
-    
-    // Reposition remaining slots in grid
-    const repositionedSlots = repositionSlotsInGrid(remainingSlots, dimensions);
-    
-    setCurrentSlots(repositionedSlots);
+    setCurrentSlots(currentSlots.filter(s => s.id !== slotId));
   };
 
   const handleContainerDragStart = (containerId: number) => {
@@ -214,6 +201,10 @@ const FactoryLayout: React.FC = () => {
               </TabsList>
               {editMode && (
                 <div className="flex gap-2">
+                  <Button variant="default" size="sm" onClick={handleAddSlotButton} className="gradient-primary">
+                    <Plus className="w-4 h-4 mr-2" />
+                    Adicionar Vaga
+                  </Button>
                   <Button variant="outline" size="sm" onClick={handleClearFloor}>
                     <RotateCcw className="w-4 h-4 mr-2" />
                     Limpar
@@ -229,14 +220,15 @@ const FactoryLayout: React.FC = () => {
                 showGrid={showGrid}
                 editMode={editMode}
                 draggedContainer={draggedContainer}
-                onAddSlot={handleAddSlot}
+                onAddSlot={handleAddSlotAtPosition}
                 onDeleteSlot={handleDeleteSlot}
                 onSlotDrop={handleSlotDrop}
                 getContainerData={getContainerData}
                 getActiveProcess={getActiveProcess}
                 processes={processes}
                 removeContainerFromSlot={removeContainerFromSlot}
-                slotDimensions={getSlotDimensions(factorySlots.length)}
+                slotWidth={slotWidth}
+                slotHeight={slotHeight}
               />
             </TabsContent>
 
@@ -247,14 +239,15 @@ const FactoryLayout: React.FC = () => {
                 showGrid={showGrid}
                 editMode={editMode}
                 draggedContainer={draggedContainer}
-                onAddSlot={handleAddSlot}
+                onAddSlot={handleAddSlotAtPosition}
                 onDeleteSlot={handleDeleteSlot}
                 onSlotDrop={handleSlotDrop}
                 getContainerData={getContainerData}
                 getActiveProcess={getActiveProcess}
                 processes={processes}
                 removeContainerFromSlot={removeContainerFromSlot}
-                slotDimensions={getSlotDimensions(factorySlots2.length)}
+                slotWidth={slotWidth}
+                slotHeight={slotHeight}
               />
             </TabsContent>
           </Tabs>
@@ -339,7 +332,8 @@ interface FactoryFloorProps {
   getActiveProcess: (container: Container) => { stage: any; process: any; worker: any } | null;
   processes: any[];
   removeContainerFromSlot: (containerId: number) => void;
-  slotDimensions: { width: number; height: number };
+  slotWidth: number;
+  slotHeight: number;
 }
 
 const FactoryFloor: React.FC<FactoryFloorProps> = ({
@@ -355,15 +349,17 @@ const FactoryFloor: React.FC<FactoryFloorProps> = ({
   getActiveProcess,
   processes,
   removeContainerFromSlot,
-  slotDimensions,
+  slotWidth,
+  slotHeight,
 }) => {
   return (
     <Card className="glass overflow-hidden">
       <div
         className={cn(
-          'relative w-full h-[600px] overflow-auto',
+          'relative w-full h-[600px] overflow-auto cursor-crosshair',
           showGrid && 'bg-[linear-gradient(rgba(255,255,255,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.03)_1px,transparent_1px)]',
-          showGrid && 'bg-[size:20px_20px]'
+          showGrid && 'bg-[size:20px_20px]',
+          !editMode && 'cursor-default'
         )}
         onClick={editMode ? onAddSlot : undefined}
       >
@@ -393,9 +389,8 @@ const FactoryFloor: React.FC<FactoryFloorProps> = ({
                 style={{
                   left: slot.x,
                   top: slot.y,
-                  width: slotDimensions.width,
-                  height: slotDimensions.height,
-                  transition: 'width 0.3s ease, height 0.3s ease',
+                  width: slotWidth,
+                  height: slotHeight,
                 }}
                 onDragOver={(e) => {
                   e.preventDefault();
