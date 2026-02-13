@@ -139,6 +139,56 @@ const GanttChart: React.FC = () => {
     return { container, stage, process };
   }, [selectedStage, containers, processes]);
 
+  // Helper function to organize stages into lanes to avoid overlaps
+  const organizeStagesIntoLanes = (stages: typeof allStages) => {
+    // Calculate time ranges for each stage
+    const stagesWithTime = stages.map((stage) => {
+      const startHour = stage.scheduledStartTime
+        ? new Date(stage.scheduledStartTime).getHours() + new Date(stage.scheduledStartTime).getMinutes() / 60
+        : 7;
+      const duration = stage.estimatedDuration / 60; // hours
+      const endHour = startHour + duration;
+      return {
+        ...stage,
+        startHour,
+        endHour,
+      };
+    });
+
+    // Sort by start time
+    const sorted = [...stagesWithTime].sort((a, b) => a.startHour - b.startHour);
+
+    // Assign lanes using a greedy algorithm
+    const lanes: typeof stagesWithTime[][] = [];
+    const laneAssignments = new Map<number, number>(); // stage.processId -> lane index
+
+    sorted.forEach((stage) => {
+      // Find the first lane where this stage doesn't overlap
+      let assignedLane = -1;
+      for (let i = 0; i < lanes.length; i++) {
+        const canFit = lanes[i].every((existingStage) => {
+          // Check if there's no overlap
+          return stage.endHour <= existingStage.startHour || stage.startHour >= existingStage.endHour;
+        });
+        if (canFit) {
+          assignedLane = i;
+          break;
+        }
+      }
+
+      // If no lane found, create a new one
+      if (assignedLane === -1) {
+        assignedLane = lanes.length;
+        lanes.push([]);
+      }
+
+      lanes[assignedLane].push(stage);
+      laneAssignments.set(stage.processId, assignedLane);
+    });
+
+    return { laneAssignments, numLanes: lanes.length };
+  };
+
   const renderTimeline = () => (
     <ScrollArea className="w-full whitespace-nowrap">
       <div className="min-w-[1200px] p-4">
@@ -159,18 +209,31 @@ const GanttChart: React.FC = () => {
           const progress = calculateProgress(container.processStages);
           const isHighlighted = highlightedContainerId === container.id.toString();
 
+          // Organize stages into lanes to avoid overlaps
+          const { laneAssignments, numLanes } = organizeStagesIntoLanes(container.processStages.map(stage => ({
+            ...stage,
+            containerId: container.id,
+            containerNumber: container.number,
+            containerType: container.type,
+          })));
+
+          // Calculate height based on number of lanes (minimum 1 lane = 40px, each additional lane adds 36px)
+          const laneHeight = 36;
+          const minHeight = 40;
+          const containerHeight = Math.max(minHeight, minHeight + (numLanes - 1) * laneHeight);
+
           return (
             <motion.div
               key={container.id}
               initial={{ opacity: 0, x: -20 }}
               animate={{ opacity: 1, x: 0 }}
               className={cn(
-                'flex items-center mb-3 p-2 rounded-lg transition-all',
+                'flex items-start mb-3 p-2 rounded-lg transition-all',
                 isHighlighted && 'ring-2 ring-primary bg-primary/5'
               )}
             >
               {/* Container info */}
-              <div className="w-64 flex-shrink-0 pr-4">
+              <div className="w-64 flex-shrink-0 pr-4 pt-1">
                 <div className="flex items-center gap-3">
                   <div>
                     <p className="font-semibold text-sm">{container.number}</p>
@@ -183,7 +246,10 @@ const GanttChart: React.FC = () => {
               </div>
 
               {/* Process bars */}
-              <div className="flex-1 relative h-10 bg-muted/20 rounded-lg overflow-hidden">
+              <div 
+                className="flex-1 relative bg-muted/20 rounded-lg overflow-hidden"
+                style={{ height: `${containerHeight}px` }}
+              >
                 {container.processStages.map((stage) => {
                   const process = processes.find(p => p.id === stage.processId);
                   const worker = workers.find(w => stage.assignedWorkerIds.includes(w.id));
@@ -197,6 +263,11 @@ const GanttChart: React.FC = () => {
                   const left = `${(startHour / 24) * 100}%`;
                   const width = `${Math.min((duration / 24) * 100, 100 - (startHour / 24) * 100)}%`;
 
+                  // Get lane assignment
+                  const laneIndex = laneAssignments.get(stage.processId) || 0;
+                  const top = laneIndex * laneHeight + 2;
+                  const height = laneHeight - 4;
+
                   const statusColors = {
                     pending: 'bg-muted',
                     scheduled: 'bg-accent/50',
@@ -209,13 +280,15 @@ const GanttChart: React.FC = () => {
                     <motion.div
                       key={stage.processId}
                       className={cn(
-                        'absolute top-1 bottom-1 rounded cursor-pointer transition-all',
+                        'absolute rounded cursor-pointer transition-all',
                         'hover:scale-y-110 hover:z-10',
                         statusColors[stage.status]
                       )}
                       style={{
                         left,
                         width,
+                        top: `${top}px`,
+                        height: `${height}px`,
                         backgroundColor: worker ? getWorkerColor(worker.id) : undefined,
                       }}
                       whileHover={{ scale: 1.02 }}

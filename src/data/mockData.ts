@@ -128,49 +128,103 @@ export const MOCK_WORKERS: Worker[] = [
 // ============================================
 export const MOCK_SEQUENCING_RULES: SequencingRule[] = [
   {
-    processId: 1,
+    processId: 1, // LIMPEZA
     beforeProcesses: [],
+    afterProcesses: [2, 3], // Executa depois de LAVAGEM EXTERNA e LAVAGEM INTERNA
+    parallelProcesses: [4, 5], // Pode executar em paralelo com TETO/FUNILARIA e ABERTURAS
+    separatedProcesses: [],
+    sameWorkerProcesses: [6], // Mesmo trabalhador que SOLDA
+    requiresSeniorJunior: false
+  },
+  {
+    processId: 2, // LAVAGEM EXTERNA
+    beforeProcesses: [1], // Antes de LIMPEZA
     afterProcesses: [],
-    parallelProcesses: [],
+    parallelProcesses: [3], // Paralelo com LAVAGEM INTERNA
+    separatedProcesses: [],
+    sameWorkerProcesses: [3], // Mesmo trabalhador que LAVAGEM INTERNA
+    requiresSeniorJunior: false
+  },
+  {
+    processId: 3, // LAVAGEM INTERNA
+    beforeProcesses: [1], // Antes de LIMPEZA
+    afterProcesses: [],
+    parallelProcesses: [2], // Paralelo com LAVAGEM EXTERNA
+    separatedProcesses: [],
+    sameWorkerProcesses: [2], // Mesmo trabalhador que LAVAGEM EXTERNA
+    requiresSeniorJunior: false
+  },
+  {
+    processId: 4, // TETO/FUNILARIA
+    beforeProcesses: [],
+    afterProcesses: [1], // Depois de LIMPEZA
+    parallelProcesses: [5, 6], // Paralelo com ABERTURAS e SOLDA
+    separatedProcesses: [],
+    sameWorkerProcesses: [],
+    requiresSeniorJunior: true
+  },
+  {
+    processId: 5, // ABERTURAS
+    beforeProcesses: [],
+    afterProcesses: [1], // Depois de LIMPEZA
+    parallelProcesses: [4, 6], // Paralelo com TETO/FUNILARIA e SOLDA
     separatedProcesses: [],
     sameWorkerProcesses: [],
     requiresSeniorJunior: false
   },
   {
-    processId: 2,
-    beforeProcesses: [1],
-    afterProcesses: [],
-    parallelProcesses: [],
-    separatedProcesses: [],
-    sameWorkerProcesses: [3],
-    requiresSeniorJunior: false
-  },
-  {
-    processId: 3,
-    beforeProcesses: [2],
-    afterProcesses: [],
-    parallelProcesses: [],
-    separatedProcesses: [],
-    sameWorkerProcesses: [2],
-    requiresSeniorJunior: false
-  },
-  {
-    processId: 16,
+    processId: 6, // SOLDA
     beforeProcesses: [],
-    afterProcesses: [],
-    parallelProcesses: [4, 5, 6],
+    afterProcesses: [4, 5], // Depois de TETO/FUNILARIA e ABERTURAS
+    parallelProcesses: [],
+    separatedProcesses: [],
+    sameWorkerProcesses: [1], // Mesmo trabalhador que LIMPEZA
+    requiresSeniorJunior: true
+  },
+  {
+    processId: 11, // PINTURA AIRLESS
+    beforeProcesses: [],
+    afterProcesses: [6, 7, 8], // Depois de SOLDA, PISO, FORRO
+    parallelProcesses: [12], // Paralelo com PINTURA PAREDES
+    separatedProcesses: [],
+    sameWorkerProcesses: [],
+    requiresSeniorJunior: true
+  },
+  {
+    processId: 12, // PINTURA PAREDES
+    beforeProcesses: [],
+    afterProcesses: [6, 7, 8], // Depois de SOLDA, PISO, FORRO
+    parallelProcesses: [11], // Paralelo com PINTURA AIRLESS
     separatedProcesses: [],
     sameWorkerProcesses: [],
     requiresSeniorJunior: false
   },
   {
-    processId: 22,
+    processId: 15, // ELÉTRICA
     beforeProcesses: [],
-    afterProcesses: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21],
-    parallelProcesses: [],
+    afterProcesses: [11, 12], // Depois das pinturas
+    parallelProcesses: [14], // Paralelo com HIDRÁULICA
+    separatedProcesses: [],
+    sameWorkerProcesses: [],
+    requiresSeniorJunior: true
+  },
+  {
+    processId: 16, // VIDRAÇARIA
+    beforeProcesses: [],
+    afterProcesses: [15], // Depois de ELÉTRICA
+    parallelProcesses: [17, 18], // Paralelo com ACABAMENTOS e PINTURA PISO
     separatedProcesses: [],
     sameWorkerProcesses: [],
     requiresSeniorJunior: false
+  },
+  {
+    processId: 22, // C.QUALIDADE
+    beforeProcesses: [],
+    afterProcesses: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21], // Último processo
+    parallelProcesses: [],
+    separatedProcesses: [],
+    sameWorkerProcesses: [],
+    requiresSeniorJunior: true
   }
 ];
 

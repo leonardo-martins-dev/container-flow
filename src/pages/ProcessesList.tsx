@@ -45,6 +45,8 @@ const ProcessesList: React.FC = () => {
   const [editName, setEditName] = useState('');
   const [editTime, setEditTime] = useState('');
   const [showNewModal, setShowNewModal] = useState(false);
+  const [showWorkersModal, setShowWorkersModal] = useState(false);
+  const [selectedProcessWorkers, setSelectedProcessWorkers] = useState<{ process: any; workers: any[] }>({ process: null, workers: [] });
   const [newProcess, setNewProcess] = useState({ name: '', averageTimeMinutes: 60 });
 
   const handleEdit = (process: typeof processes[0]) => {
@@ -84,6 +86,12 @@ const ProcessesList: React.FC = () => {
 
   const getWorkersForProcess = (processId: number) => {
     return workers.filter(w => w.specialtyProcessIds.includes(processId));
+  };
+
+  const handleShowWorkers = (process: any) => {
+    const processWorkers = getWorkersForProcess(process.id);
+    setSelectedProcessWorkers({ process, workers: processWorkers });
+    setShowWorkersModal(true);
   };
 
   const getRule = (processId: number) => {
@@ -145,10 +153,6 @@ const ProcessesList: React.FC = () => {
             Gerencie processos e regras de sequenciamento
           </p>
         </div>
-        <Button onClick={() => setShowNewModal(true)} className="gradient-primary text-primary-foreground">
-          <Plus className="w-4 h-4 mr-2" />
-          Novo Processo
-        </Button>
       </div>
 
       <Tabs defaultValue="processes">
@@ -164,6 +168,13 @@ const ProcessesList: React.FC = () => {
         </TabsList>
 
         <TabsContent value="processes" className="mt-4">
+          {/* Botão Novo Processo apenas na aba de processos */}
+          <div className="flex justify-end mb-4">
+            <Button onClick={() => setShowNewModal(true)} className="gradient-primary text-primary-foreground">
+              <Plus className="w-4 h-4 mr-2" />
+              Novo Processo
+            </Button>
+          </div>
           <Card className="glass">
             <CardContent className="p-0">
               <Table>
@@ -221,9 +232,13 @@ const ProcessesList: React.FC = () => {
                             )}
                           </TableCell>
                           <TableCell>
-                            <div className="flex items-center gap-2">
+                            <div 
+                              className="flex items-center gap-2 cursor-pointer hover:bg-muted/50 p-1 rounded transition-colors"
+                              onClick={() => handleShowWorkers(process)}
+                            >
                               <Users className="w-4 h-4 text-muted-foreground" />
                               <Badge variant="outline">{processWorkers.length}</Badge>
+                              <span className="text-xs text-muted-foreground ml-1">ver detalhes</span>
                             </div>
                           </TableCell>
                           <TableCell className="text-right">
@@ -274,95 +289,245 @@ const ProcessesList: React.FC = () => {
         </TabsContent>
 
         <TabsContent value="rules" className="mt-4">
-          <Card className="glass">
-            <CardHeader>
-              <CardTitle>Regras de Sequenciamento</CardTitle>
-              <CardDescription>
-                Defina dependências e restrições entre processos. As regras são sincronizadas bidirecionalmente.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <ScrollArea className="h-[500px]">
-                <Table>
-                  <TableHeader>
-                    <TableRow className="border-border/50">
-                      <TableHead className="sticky left-0 bg-card z-10">Processo</TableHead>
-                      <TableHead>Depois de</TableHead>
-                      <TableHead>Paralelo com</TableHead>
-                      <TableHead>Mesmo Trabalhador</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {processes.map((process) => {
-                      const rule = getRule(process.id);
-                      const otherProcesses = processes.filter(p => p.id !== process.id);
+          <div className="grid gap-6">
+            {/* Header explicativo */}
+            <Card className="glass border-primary/20">
+              <CardHeader className="pb-3">
+                <CardTitle className="flex items-center gap-2">
+                  <FileText className="w-5 h-5 text-primary" />
+                  Regras de Sequenciamento
+                </CardTitle>
+                <CardDescription className="text-sm">
+                  Configure as dependências entre processos de forma visual e intuitiva. 
+                  Clique nos badges para ativar/desativar as regras.
+                </CardDescription>
+              </CardHeader>
+            </Card>
 
-                      return (
-                        <TableRow key={process.id} className="border-border/30">
-                          <TableCell className="sticky left-0 bg-card z-10 font-medium">
+            {/* Grid de processos */}
+            <div className="grid gap-4">
+              {processes.map((process) => {
+                const rule = getRule(process.id);
+                const otherProcesses = processes.filter(p => p.id !== process.id);
+
+                return (
+                  <motion.div
+                    key={process.id}
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: processes.indexOf(process) * 0.05 }}
+                  >
+                    <Card className="glass hover:shadow-md transition-all">
+                      <CardHeader className="pb-3">
+                        <div className="flex items-center justify-between">
+                          <CardTitle className="text-lg flex items-center gap-2">
+                            <div className="w-3 h-3 rounded-full bg-primary"></div>
                             {process.name}
-                          </TableCell>
-                          <TableCell>
-                            <div className="flex flex-wrap gap-1">
-                              {otherProcesses.slice(0, 6).map((p) => (
+                          </CardTitle>
+                          <Badge variant="outline" className="text-xs">
+                            {formatTime(process.averageTimeMinutes)}
+                          </Badge>
+                        </div>
+                      </CardHeader>
+                      <CardContent className="space-y-4">
+                        {/* Depois de (Dependências) */}
+                        <div className="space-y-2">
+                          <div className="flex items-center gap-2">
+                            <div className="w-2 h-2 rounded-full bg-primary"></div>
+                            <label className="text-sm font-medium text-primary">
+                              Deve executar DEPOIS de:
+                            </label>
+                          </div>
+                          <div className="flex flex-wrap gap-2 min-h-[32px] p-2 rounded-md bg-primary/10 border border-primary/20">
+                            {otherProcesses.length === 0 ? (
+                              <span className="text-xs text-muted-foreground">Nenhum processo disponível</span>
+                            ) : (
+                              otherProcesses.map((p) => (
                                 <Badge
                                   key={p.id}
                                   variant={rule.afterProcesses.includes(p.id) ? 'default' : 'outline'}
                                   className={cn(
-                                    'cursor-pointer text-xs',
-                                    rule.afterProcesses.includes(p.id) && 'gradient-primary'
+                                    'cursor-pointer text-xs transition-all hover:scale-105',
+                                    rule.afterProcesses.includes(p.id) 
+                                      ? 'bg-primary hover:bg-primary/80 text-primary-foreground' 
+                                      : 'hover:bg-primary/20'
                                   )}
                                   onClick={() => toggleRuleProcess(process.id, p.id, 'afterProcesses')}
                                 >
-                                  {p.name.slice(0, 8)}
+                                  {p.name}
                                 </Badge>
-                              ))}
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            <div className="flex flex-wrap gap-1">
-                              {otherProcesses.slice(0, 6).map((p) => (
+                              ))
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Paralelo com */}
+                        <div className="space-y-2">
+                          <div className="flex items-center gap-2">
+                            <div className="w-2 h-2 rounded-full bg-accent"></div>
+                            <label className="text-sm font-medium text-accent-foreground">
+                              Pode executar em PARALELO com:
+                            </label>
+                          </div>
+                          <div className="flex flex-wrap gap-2 min-h-[32px] p-2 rounded-md bg-accent/10 border border-accent/20">
+                            {otherProcesses.length === 0 ? (
+                              <span className="text-xs text-muted-foreground">Nenhum processo disponível</span>
+                            ) : (
+                              otherProcesses.map((p) => (
                                 <Badge
                                   key={p.id}
                                   variant={rule.parallelProcesses.includes(p.id) ? 'default' : 'outline'}
                                   className={cn(
-                                    'cursor-pointer text-xs',
-                                    rule.parallelProcesses.includes(p.id) && 'bg-accent'
+                                    'cursor-pointer text-xs transition-all hover:scale-105',
+                                    rule.parallelProcesses.includes(p.id) 
+                                      ? 'bg-accent hover:bg-accent/80 text-accent-foreground' 
+                                      : 'hover:bg-accent/20'
                                   )}
                                   onClick={() => toggleRuleProcess(process.id, p.id, 'parallelProcesses')}
                                 >
-                                  {p.name.slice(0, 8)}
+                                  {p.name}
                                 </Badge>
-                              ))}
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            <div className="flex flex-wrap gap-1">
-                              {otherProcesses.slice(0, 6).map((p) => (
+                              ))
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Mesmo trabalhador */}
+                        <div className="space-y-2">
+                          <div className="flex items-center gap-2">
+                            <div className="w-2 h-2 rounded-full bg-warning"></div>
+                            <label className="text-sm font-medium text-foreground">
+                              Deve usar o MESMO TRABALHADOR que:
+                            </label>
+                          </div>
+                          <div className="flex flex-wrap gap-2 min-h-[32px] p-2 rounded-md bg-warning/10 border border-warning/20">
+                            {otherProcesses.length === 0 ? (
+                              <span className="text-xs text-muted-foreground">Nenhum processo disponível</span>
+                            ) : (
+                              otherProcesses.map((p) => (
                                 <Badge
                                   key={p.id}
                                   variant={rule.sameWorkerProcesses.includes(p.id) ? 'default' : 'outline'}
                                   className={cn(
-                                    'cursor-pointer text-xs',
-                                    rule.sameWorkerProcesses.includes(p.id) && 'bg-success'
+                                    'cursor-pointer text-xs transition-all hover:scale-105',
+                                    rule.sameWorkerProcesses.includes(p.id) 
+                                      ? 'bg-warning hover:bg-warning/80 text-warning-foreground' 
+                                      : 'hover:bg-warning/20'
                                   )}
                                   onClick={() => toggleRuleProcess(process.id, p.id, 'sameWorkerProcesses')}
                                 >
-                                  {p.name.slice(0, 8)}
+                                  {p.name}
                                 </Badge>
-                              ))}
+                              ))
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Resumo das regras ativas */}
+                        {(rule.afterProcesses.length > 0 || rule.parallelProcesses.length > 0 || rule.sameWorkerProcesses.length > 0) && (
+                          <div className="pt-2 border-t border-border/50">
+                            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                              <Badge variant="secondary" className="text-xs">
+                                {rule.afterProcesses.length + rule.parallelProcesses.length + rule.sameWorkerProcesses.length} regras ativas
+                              </Badge>
                             </div>
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })}
-                  </TableBody>
-                </Table>
-              </ScrollArea>
-            </CardContent>
-          </Card>
+                          </div>
+                        )}
+                      </CardContent>
+                    </Card>
+                  </motion.div>
+                );
+              })}
+            </div>
+
+            {/* Legenda */}
+            <Card className="glass border-muted">
+              <CardContent className="pt-4">
+                <div className="flex items-center justify-center gap-8 text-xs">
+                  <div className="flex items-center gap-2">
+                    <div className="w-2 h-2 rounded-full bg-primary"></div>
+                    <span>Dependência (depois de)</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="w-2 h-2 rounded-full bg-accent"></div>
+                    <span>Paralelo</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="w-2 h-2 rounded-full bg-warning"></div>
+                    <span>Mesmo trabalhador</span>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
         </TabsContent>
       </Tabs>
+
+      {/* Workers Modal */}
+      <Dialog open={showWorkersModal} onOpenChange={setShowWorkersModal}>
+        <DialogContent className="glass max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Users className="w-5 h-5 text-primary" />
+              Trabalhadores - {selectedProcessWorkers.process?.name}
+            </DialogTitle>
+            <DialogDescription>
+              Trabalhadores especializados neste processo
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            {selectedProcessWorkers.workers.length === 0 ? (
+              <div className="text-center py-8">
+                <Users className="w-12 h-12 text-muted-foreground/30 mx-auto mb-4" />
+                <p className="text-muted-foreground">
+                  Nenhum trabalhador especializado neste processo
+                </p>
+              </div>
+            ) : (
+              <div className="grid gap-3">
+                {selectedProcessWorkers.workers.map((worker) => (
+                  <motion.div
+                    key={worker.id}
+                    initial={{ opacity: 0, x: -20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    className="flex items-center justify-between p-3 rounded-lg border bg-card/50"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
+                        <span className="text-sm font-bold text-primary">
+                          {worker.name.split(' ').map(n => n[0]).join('').slice(0, 2)}
+                        </span>
+                      </div>
+                      <div>
+                        <p className="font-medium">{worker.name}</p>
+                        <p className="text-sm text-muted-foreground">
+                          {worker.level === 'senior' ? 'Sênior' : 'Júnior'}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Badge 
+                        variant={worker.level === 'senior' ? 'default' : 'secondary'}
+                        className="text-xs"
+                      >
+                        {worker.level === 'senior' ? 'Sênior' : 'Júnior'}
+                      </Badge>
+                      <Badge variant="outline" className="text-xs">
+                        {worker.specialtyProcessIds.length} especialidades
+                      </Badge>
+                    </div>
+                  </motion.div>
+                ))}
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowWorkersModal(false)}>
+              Fechar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* New Process Modal */}
       <Dialog open={showNewModal} onOpenChange={setShowNewModal}>

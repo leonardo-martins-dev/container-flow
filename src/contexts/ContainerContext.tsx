@@ -57,6 +57,7 @@ interface ContainerContextType {
   
   // Sequencing Rules Actions
   updateSequencingRule: (processId: number, updates: Partial<SequencingRule>) => void;
+  resetSequencingRules: () => void;
   
   // Factory Slots Actions
   updateFactorySlots: (slots: FactorySlot[]) => void;
@@ -240,6 +241,11 @@ export const ContainerProvider: React.FC<ContainerProviderProps> = ({ children }
     });
   }, []);
 
+  const resetSequencingRules = useCallback(() => {
+    setSequencingRules(MOCK_SEQUENCING_RULES);
+    localStorage.removeItem('sequencingRules');
+  }, []);
+
   // Factory Slots Actions
   const updateFactorySlots = useCallback((slots: FactorySlot[]) => {
     setFactorySlots(slots);
@@ -321,6 +327,7 @@ export const ContainerProvider: React.FC<ContainerProviderProps> = ({ children }
     updateContainerType,
     deleteContainerType,
     updateSequencingRule,
+    resetSequencingRules,
     updateFactorySlots,
     updateFactorySlots2,
     assignContainerToSlot,
