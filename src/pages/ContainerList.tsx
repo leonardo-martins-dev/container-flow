@@ -7,9 +7,8 @@ import {
   Edit,
   Search,
   Container as ContainerIcon,
-  Calendar,
-  ArrowUpDown,
   MoreVertical,
+  RefreshCw,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -58,9 +57,23 @@ const statusConfig = {
 
 const ContainerList: React.FC = () => {
   const navigate = useNavigate();
-  const { containers, deleteContainer } = useContainerContext();
+  const { containers, deleteContainer, syncContainersFromApi } = useContainerContext();
   const [searchTerm, setSearchTerm] = useState('');
   const [progressFilter, setProgressFilter] = useState<'all' | 'above' | 'below'>('all');
+  const [syncing, setSyncing] = useState(false);
+  const [syncError, setSyncError] = useState<string | null>(null);
+
+  const handleSincronizar = async () => {
+    setSyncing(true);
+    setSyncError(null);
+    try {
+      await syncContainersFromApi();
+    } catch (e) {
+      setSyncError(e instanceof Error ? e.message : 'Erro ao sincronizar');
+    } finally {
+      setSyncing(false);
+    }
+  };
 
   const avgProgress = containers.length > 0
     ? containers.reduce((acc, c) => acc + calculateProgress(c.processStages), 0) / containers.length
@@ -116,12 +129,24 @@ const ContainerList: React.FC = () => {
             </AlertDialogContent>
           </AlertDialog>
           
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleSincronizar}
+            disabled={syncing}
+          >
+            <RefreshCw className={cn('w-4 h-4 mr-2', syncing && 'animate-spin')} />
+            Sincronizar
+          </Button>
           <Button onClick={() => navigate('/container/new')} className="gradient-primary text-primary-foreground">
             <Plus className="w-4 h-4 mr-2" />
             Novo Container
           </Button>
         </div>
       </div>
+      {syncError && (
+        <p className="text-sm text-destructive">{syncError}</p>
+      )}
 
       {/* Filters */}
       <Card className="glass">
@@ -204,7 +229,7 @@ const ContainerList: React.FC = () => {
                     <TableCell>{container.type}</TableCell>
                     <TableCell>{container.cliente || '-'}</TableCell>
                     <TableCell className="text-muted-foreground">
-                      {formatDate(container.startDate)}
+                      {container.startDate ? formatDate(container.startDate) : '-'}
                     </TableCell>
                     <TableCell>
                       <span className={cn(

@@ -47,8 +47,9 @@ import {
   getElapsedPercentage,
   cn,
 } from '@/lib/utils';
+import { getCronogramaMacro, getCronogramaDiario, postCronogramaGerar } from '@/lib/api';
 
-type ViewMode = 'timeline' | 'chart' | 'individual';
+type ViewMode = 'timeline' | 'chart' | 'individual' | 'macro' | 'diario';
 
 const GanttChart: React.FC = () => {
   const [searchParams] = useSearchParams();
@@ -62,12 +63,39 @@ const GanttChart: React.FC = () => {
     processId: number;
   } | null>(null);
   const [, setTick] = useState(0);
+  const [macroData, setMacroData] = useState<{ lines: number; days: number[]; assignments: Array<{ linha: number; dia: number; containerId?: string; propostaId?: number; inicioPrevisto?: string; fimPrevisto?: string }> } | null>(null);
+  const [diarioData, setDiarioData] = useState<{ date: string; byWorker: Record<number, Array<{ processoNome?: string; inicio?: string; fim?: string; horaExtraMinutos?: number }>> } | null>(null);
+  const [diarioDate, setDiarioDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [gerando, setGerando] = useState(false);
 
   // Update every second for real-time countdown
   useEffect(() => {
     const interval = setInterval(() => setTick(t => t + 1), 1000);
     return () => clearInterval(interval);
   }, []);
+
+  useEffect(() => {
+    if (viewMode === 'macro') {
+      getCronogramaMacro().then(setMacroData).catch(() => setMacroData({ lines: 7, days: [], assignments: [] }));
+    }
+  }, [viewMode]);
+
+  useEffect(() => {
+    if (viewMode === 'diario') {
+      getCronogramaDiario(diarioDate).then(setDiarioData).catch(() => setDiarioData({ date: diarioDate, byWorker: {} }));
+    }
+  }, [viewMode, diarioDate]);
+
+  const handleRecalcular = async () => {
+    setGerando(true);
+    try {
+      await postCronogramaGerar();
+      if (viewMode === 'macro') getCronogramaMacro().then(setMacroData);
+      if (viewMode === 'diario') getCronogramaDiario(diarioDate).then(setDiarioData);
+    } finally {
+      setGerando(false);
+    }
+  };
 
   // Get all process stages with container info
   const allStages = useMemo(() => {
@@ -465,6 +493,108 @@ const GanttChart: React.FC = () => {
     );
   };
 
+  const renderMacro = () => {
+    const data = macroData ?? { lines: 7, days: [...Array(14)].map((_, i) => i), assignments: [] };
+    const days = data.days?.length ? data.days : [...Array(14)].map((_, i) => i);
+    return (
+      <ScrollArea className="w-full whitespace-nowrap">
+        <div className="min-w-[800px] p-4">
+          <div className="flex mb-4 border-b border-border/50 pb-2">
+            <div className="w-24 flex-shrink-0 text-xs text-muted-foreground font-medium">Linha</div>
+            <div className="flex-1 flex">
+              {days.slice(0, 14).map((d) => (
+                <div key={d} className="flex-1 min-w-[80px] text-center text-xs text-muted-foreground">
+                  Dia {d}
+                </div>
+              ))}
+            </div>
+          </div>
+          {Array.from({ length: data.lines || 7 }, (_, linha) => (
+            <div key={linha} className="flex items-center mb-2 h-12">
+              <div className="w-24 flex-shrink-0 text-sm font-medium">Linha {linha + 1}</div>
+              <div className="flex-1 relative h-10 bg-muted/20 rounded overflow-hidden flex">
+                {(data.assignments || [])
+                  .filter((a: { linha?: number }) => (a.linha ?? 0) === linha + 1)
+                  .map((a: { dia?: number; containerId?: string; inicioPrevisto?: string }, i: number) => (
+                    <div
+                      key={i}
+                      className="absolute top-1 bottom-1 rounded bg-primary/80 text-primary-foreground text-xs flex items-center justify-center truncate px-1"
+                      style={{
+                        left: `${((a.dia ?? 0) / Math.max(days.length, 1)) * 100}%`,
+                        width: `${(1 / Math.max(days.length, 1)) * 100 - 1}%`,
+                      }}
+                    >
+                      {a.containerId || '-'}
+                    </div>
+                  ))}
+              </div>
+            </div>
+          ))}
+        </div>
+        <ScrollBar orientation="horizontal" />
+      </ScrollArea>
+    );
+  };
+
+  const renderDiario = () => {
+    const data = diarioData ?? { date: diarioDate, byWorker: {} };
+    const workerIds = Object.keys(data.byWorker || {}).map(Number);
+    const slots = ['7:10', '8:00', '9:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00', '16:50'];
+    return (
+      <div className="space-y-4 p-4">
+        <div className="flex items-center gap-4">
+          <label className="text-sm font-medium">Data:</label>
+          <input
+            type="date"
+            value={diarioDate}
+            onChange={(e) => setDiarioDate(e.target.value)}
+            className="border rounded px-2 py-1 bg-background"
+          />
+        </div>
+        <ScrollArea className="w-full whitespace-nowrap">
+          <div className="min-w-[900px]">
+            <div className="flex mb-2 border-b border-border/50 pb-2">
+              <div className="w-32 flex-shrink-0 text-xs text-muted-foreground font-medium">Funcionário</div>
+              <div className="flex-1 flex">
+                {slots.map((s) => (
+                  <div key={s} className="flex-1 min-w-[48px] text-center text-xs text-muted-foreground">{s}</div>
+                ))}
+              </div>
+            </div>
+            {workerIds.length === 0 ? (
+              <p className="text-muted-foreground py-8">Nenhuma alocação para esta data. Gere o cronograma primeiro.</p>
+            ) : (
+              workerIds.map((wid) => {
+                const tasks = (data.byWorker || {})[wid] || [];
+                const worker = workers.find((w) => w.id === wid);
+                return (
+                  <div key={wid} className="flex items-center mb-2 h-12">
+                    <div className="w-32 flex-shrink-0 text-sm font-medium truncate">{worker?.name ?? `Worker ${wid}`}</div>
+                    <div className="flex-1 relative h-10 bg-muted/20 rounded overflow-hidden">
+                      {tasks.map((t, i) => (
+                        <div
+                          key={i}
+                          className="absolute top-1 bottom-1 rounded bg-accent text-accent-foreground text-xs flex items-center justify-center truncate px-1"
+                          style={{
+                            left: `${(i / Math.max(tasks.length, 1)) * 100}%`,
+                            width: `${(1 / Math.max(tasks.length, 1)) * 100 - 2}%`,
+                          }}
+                        >
+                          {t.processoNome ?? '-'}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+          <ScrollBar orientation="horizontal" />
+        </ScrollArea>
+      </div>
+    );
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -475,8 +605,8 @@ const GanttChart: React.FC = () => {
             Visualize e gerencie o cronograma de todos os containers
           </p>
         </div>
-        <Button variant="outline" className="gap-2">
-          <RefreshCw className="w-4 h-4" />
+        <Button variant="outline" className="gap-2" onClick={handleRecalcular} disabled={gerando}>
+          <RefreshCw className={cn('w-4 h-4', gerando && 'animate-spin')} />
           Recalcular
         </Button>
       </div>
@@ -496,6 +626,14 @@ const GanttChart: React.FC = () => {
             <User className="w-4 h-4" />
             Individual
           </TabsTrigger>
+          <TabsTrigger value="macro" className="gap-2">
+            <LayoutGrid className="w-4 h-4" />
+            Cronograma Macro
+          </TabsTrigger>
+          <TabsTrigger value="diario" className="gap-2">
+            <Calendar className="w-4 h-4" />
+            Cronograma Diário
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="timeline" className="mt-4">
@@ -510,6 +648,16 @@ const GanttChart: React.FC = () => {
 
         <TabsContent value="individual" className="mt-4">
           {renderIndividual()}
+        </TabsContent>
+        <TabsContent value="macro" className="mt-4">
+          <Card className="glass overflow-hidden">
+            {renderMacro()}
+          </Card>
+        </TabsContent>
+        <TabsContent value="diario" className="mt-4">
+          <Card className="glass overflow-hidden">
+            {renderDiario()}
+          </Card>
         </TabsContent>
       </Tabs>
 

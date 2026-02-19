@@ -11,6 +11,7 @@ import {
   GripVertical,
   Layers,
   FileText,
+  Search,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -38,6 +39,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { useContainerContext } from '@/contexts/ContainerContext';
 import { formatTime, cn } from '@/lib/utils';
 import { toast } from '@/hooks/use-toast';
+import { getRegrasValidar } from '@/lib/api';
 
 const ProcessesList: React.FC = () => {
   const { processes, workers, sequencingRules, addProcess, updateProcess, deleteProcess, updateSequencingRule } = useContainerContext();
@@ -48,6 +50,8 @@ const ProcessesList: React.FC = () => {
   const [showWorkersModal, setShowWorkersModal] = useState(false);
   const [selectedProcessWorkers, setSelectedProcessWorkers] = useState<{ process: any; workers: any[] }>({ process: null, workers: [] });
   const [newProcess, setNewProcess] = useState({ name: '', averageTimeMinutes: 60 });
+  const [validando, setValidando] = useState(false);
+  const [validacaoResult, setValidacaoResult] = useState<{ ok: boolean; erros: string[] } | null>(null);
 
   const handleEdit = (process: typeof processes[0]) => {
     setEditingId(process.id);
@@ -301,6 +305,35 @@ const ProcessesList: React.FC = () => {
                   Configure as dependências entre processos de forma visual e intuitiva. 
                   Clique nos badges para ativar/desativar as regras.
                 </CardDescription>
+                <div className="pt-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={validando}
+                    onClick={async () => {
+                      setValidando(true);
+                      setValidacaoResult(null);
+                      try {
+                        const res = await getRegrasValidar();
+                        setValidacaoResult(res);
+                        toast({ title: res.ok ? 'Todas as regras estão consistentes.' : 'Inconsistências encontradas.', variant: res.ok ? 'default' : 'destructive' });
+                      } catch (e) {
+                        toast({ title: 'Erro ao validar regras.', variant: 'destructive' });
+                        setValidacaoResult({ ok: false, erros: [e instanceof Error ? e.message : 'Erro desconhecido'] });
+                      } finally {
+                        setValidando(false);
+                      }
+                    }}
+                  >
+                    <Search className="w-4 h-4 mr-2" />
+                    Validar Todas as Regras
+                  </Button>
+                  {validacaoResult && (
+                    <div className={cn('mt-2 text-sm', validacaoResult.ok ? 'text-green-600' : 'text-destructive')}>
+                      {validacaoResult.ok ? 'Todas as regras estão sincronizadas.' : validacaoResult.erros?.length ? validacaoResult.erros.map((e, i) => <div key={i}>{e}</div>) : null}
+                    </div>
+                  )}
+                </div>
               </CardHeader>
             </Card>
 

@@ -15,6 +15,7 @@ import {
   INITIAL_FACTORY_SLOTS_2,
 } from '@/data/mockData';
 import { calculateContainerStatus } from '@/lib/utils';
+import { getPropostas } from '@/lib/api';
 
 interface Alert {
   id: string;
@@ -68,6 +69,9 @@ interface ContainerContextType {
   // Alert Actions
   dismissAlert: (alertId: string) => void;
   clearAlerts: () => void;
+
+  // API sync (propostas -> containers)
+  syncContainersFromApi: () => Promise<void>;
 }
 
 const ContainerContext = createContext<ContainerContextType | undefined>(undefined);
@@ -293,6 +297,22 @@ export const ContainerProvider: React.FC<ContainerProviderProps> = ({ children }
     setAlerts([]);
   }, []);
 
+  const syncContainersFromApi = useCallback(async () => {
+    const propostas = await getPropostas();
+    const mapped: Container[] = propostas.map((p) => ({
+      id: p.ID,
+      number: p.Patrimonio || p.Ordem_Prod || String(p.ID),
+      type: p.TIPO_PROD || p.Produto || '-',
+      cliente: p.Cliente || '-',
+      deliveryDeadline: p.Data_Firmada ? new Date(p.Data_Firmada).toISOString().slice(0, 10) : '',
+      startDate: '',
+      currentStatus: 'pending' as const,
+      processStages: [],
+      createdAt: new Date().toISOString(),
+    }));
+    setContainers(mapped);
+  }, []);
+
   // Auto-update status every 30 seconds
   useEffect(() => {
     const interval = setInterval(() => {
@@ -334,6 +354,7 @@ export const ContainerProvider: React.FC<ContainerProviderProps> = ({ children }
     removeContainerFromSlot,
     dismissAlert,
     clearAlerts,
+    syncContainersFromApi,
   };
 
   return (
