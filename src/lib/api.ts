@@ -49,9 +49,33 @@ export async function getCronogramaDiario(date: string) {
   return res.json();
 }
 
+export interface CronogramaConflict {
+  workerId: number;
+  data: string;
+  task1: { proposta_id: number; processo_id: number; inicio: string; fim: string };
+  task2: { proposta_id: number; processo_id: number; inicio: string; fim: string };
+}
+
+export class CronogramaGerarError extends Error {
+  conflicts: CronogramaConflict[];
+  constructor(message: string, conflicts: CronogramaConflict[] = []) {
+    super(message);
+    this.name = 'CronogramaGerarError';
+    this.conflicts = conflicts;
+  }
+}
+
 export async function postCronogramaGerar() {
   const res = await fetch(`${API_BASE}/api/cronograma/gerar`, { method: 'POST' });
-  if (!res.ok) throw new Error(await res.text().catch(() => res.statusText));
+  if (!res.ok) {
+    const contentType = res.headers.get('content-type');
+    const body = contentType?.includes('application/json')
+      ? await res.json().catch(() => ({}))
+      : {};
+    const message = body?.error ?? (await res.text().catch(() => res.statusText));
+    const conflicts = Array.isArray(body?.conflicts) ? body.conflicts : [];
+    throw new CronogramaGerarError(message, conflicts);
+  }
   return res.json();
 }
 

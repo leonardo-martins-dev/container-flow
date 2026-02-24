@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import {
   Plus,
@@ -39,10 +39,11 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { useContainerContext } from '@/contexts/ContainerContext';
 import { formatTime, cn } from '@/lib/utils';
 import { toast } from '@/hooks/use-toast';
-import { getRegrasValidar } from '@/lib/api';
+import { getRegrasValidar, putRegras } from '@/lib/api';
+import type { SequencingRule } from '@/data/mockData';
 
 const ProcessesList: React.FC = () => {
-  const { processes, workers, sequencingRules, addProcess, updateProcess, deleteProcess, updateSequencingRule } = useContainerContext();
+  const { processes, workers, sequencingRules, addProcess, updateProcess, deleteProcess, updateSequencingRule, setSequencingRules, loadRegrasFromApi } = useContainerContext();
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editName, setEditName] = useState('');
   const [editTime, setEditTime] = useState('');
@@ -52,6 +53,14 @@ const ProcessesList: React.FC = () => {
   const [newProcess, setNewProcess] = useState({ name: '', averageTimeMinutes: 60 });
   const [validando, setValidando] = useState(false);
   const [validacaoResult, setValidacaoResult] = useState<{ ok: boolean; erros: string[] } | null>(null);
+  const [regrasLoaded, setRegrasLoaded] = useState(false);
+
+  useEffect(() => {
+    loadRegrasFromApi().then(() => setRegrasLoaded(true)).catch(() => {
+      toast({ title: 'Não foi possível carregar regras da API.', variant: 'destructive' });
+      setRegrasLoaded(true);
+    });
+  }, [loadRegrasFromApi]);
 
   const handleEdit = (process: typeof processes[0]) => {
     setEditingId(process.id);
@@ -110,40 +119,71 @@ const ProcessesList: React.FC = () => {
     };
   };
 
-  const toggleRuleProcess = (ruleProcessId: number, targetProcessId: number, field: keyof typeof sequencingRules[0]) => {
+  const toggleRuleProcess = async (ruleProcessId: number, targetProcessId: number, field: keyof SequencingRule) => {
     const rule = getRule(ruleProcessId);
     const currentList = (rule[field] as number[]) || [];
     const newList = currentList.includes(targetProcessId)
       ? currentList.filter(id => id !== targetProcessId)
       : [...currentList, targetProcessId];
-    
-    updateSequencingRule(ruleProcessId, { [field]: newList });
 
-    // Bidirectional sync
+    const byProcessId: Record<number, SequencingRule> = {};
+    sequencingRules.forEach(r => { byProcessId[r.processId] = { ...r }; });
+    if (!byProcessId[ruleProcessId]) {
+      byProcessId[ruleProcessId] = {
+        processId: ruleProcessId,
+        beforeProcesses: [],
+        afterProcesses: [],
+        parallelProcesses: [],
+        separatedProcesses: [],
+        sameWorkerProcesses: [],
+        requiresSeniorJunior: false,
+      };
+    }
+    byProcessId[ruleProcessId] = { ...byProcessId[ruleProcessId], [field]: newList };
+
     if (field === 'beforeProcesses') {
       const targetRule = getRule(targetProcessId);
       const targetAfter = targetRule.afterProcesses.includes(ruleProcessId)
         ? targetRule.afterProcesses
         : [...targetRule.afterProcesses, ruleProcessId];
-      updateSequencingRule(targetProcessId, { afterProcesses: newList.includes(targetProcessId) ? targetAfter : targetRule.afterProcesses.filter(id => id !== ruleProcessId) });
+      if (!byProcessId[targetProcessId]) byProcessId[targetProcessId] = { ...targetRule };
+      byProcessId[targetProcessId] = { ...byProcessId[targetProcessId], afterProcesses: newList.includes(targetProcessId) ? targetAfter : byProcessId[targetProcessId].afterProcesses.filter(id => id !== ruleProcessId) };
     } else if (field === 'afterProcesses') {
       const targetRule = getRule(targetProcessId);
       const targetBefore = targetRule.beforeProcesses.includes(ruleProcessId)
         ? targetRule.beforeProcesses
         : [...targetRule.beforeProcesses, ruleProcessId];
-      updateSequencingRule(targetProcessId, { beforeProcesses: newList.includes(targetProcessId) ? targetBefore : targetRule.beforeProcesses.filter(id => id !== ruleProcessId) });
+      if (!byProcessId[targetProcessId]) byProcessId[targetProcessId] = { ...targetRule };
+      byProcessId[targetProcessId] = { ...byProcessId[targetProcessId], beforeProcesses: newList.includes(targetProcessId) ? targetBefore : byProcessId[targetProcessId].beforeProcesses.filter(id => id !== ruleProcessId) };
     } else if (field === 'parallelProcesses') {
       const targetRule = getRule(targetProcessId);
       const targetParallel = newList.includes(targetProcessId)
         ? [...new Set([...targetRule.parallelProcesses, ruleProcessId])]
         : targetRule.parallelProcesses.filter(id => id !== ruleProcessId);
-      updateSequencingRule(targetProcessId, { parallelProcesses: targetParallel });
+      if (!byProcessId[targetProcessId]) byProcessId[targetProcessId] = { ...targetRule };
+      byProcessId[targetProcessId] = { ...byProcessId[targetProcessId], parallelProcesses: targetParallel };
     } else if (field === 'sameWorkerProcesses') {
       const targetRule = getRule(targetProcessId);
       const targetSame = newList.includes(targetProcessId)
         ? [...new Set([...targetRule.sameWorkerProcesses, ruleProcessId])]
         : targetRule.sameWorkerProcesses.filter(id => id !== ruleProcessId);
-      updateSequencingRule(targetProcessId, { sameWorkerProcesses: targetSame });
+      if (!byProcessId[targetProcessId]) byProcessId[targetProcessId] = { ...targetRule };
+      byProcessId[targetProcessId] = { ...byProcessId[targetProcessId], sameWorkerProcesses: targetSame };
+    } else if (field === 'separatedProcesses') {
+      const targetRule = getRule(targetProcessId);
+      const targetSep = newList.includes(targetProcessId)
+        ? [...new Set([...targetRule.separatedProcesses, ruleProcessId])]
+        : targetRule.separatedProcesses.filter(id => id !== ruleProcessId);
+      if (!byProcessId[targetProcessId]) byProcessId[targetProcessId] = { ...targetRule };
+      byProcessId[targetProcessId] = { ...byProcessId[targetProcessId], separatedProcesses: targetSep };
+    }
+
+    const updatedRules = Object.values(byProcessId);
+    setSequencingRules(updatedRules);
+    try {
+      await putRegras(updatedRules);
+    } catch (e) {
+      toast({ title: 'Erro ao salvar regras na API.', variant: 'destructive' });
     }
   };
 

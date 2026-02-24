@@ -30,6 +30,9 @@ router.get('/diario', async (req, res) => {
 router.post('/gerar', async (req, res) => {
   try {
     const result = await cronogramaService.gerar();
+    if (result.success === false && result.conflicts && result.conflicts.length > 0) {
+      return res.status(400).json({ ok: false, error: 'Conflitos de horário detectados', conflicts: result.conflicts });
+    }
     res.json(result);
   } catch (err) {
     console.error('POST /api/cronograma/gerar', err);

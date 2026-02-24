@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -9,6 +9,7 @@ import {
   Container as ContainerIcon,
   MoreVertical,
   RefreshCw,
+  Package,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -40,7 +41,16 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog';
 import { useContainerContext } from '@/contexts/ContainerContext';
+import { getPatrimoniosDisponiveis, getCronogramaMacro } from '@/lib/api';
+import type { PatrimonioRow } from '@/lib/api';
 import {
   calculateProgress,
   formatDate,
@@ -62,12 +72,54 @@ const ContainerList: React.FC = () => {
   const [progressFilter, setProgressFilter] = useState<'all' | 'above' | 'below'>('all');
   const [syncing, setSyncing] = useState(false);
   const [syncError, setSyncError] = useState<string | null>(null);
+  const [inicioPorPropostaId, setInicioPorPropostaId] = useState<Map<number, string>>(new Map());
+  const [patrimoniosOpen, setPatrimoniosOpen] = useState(false);
+  const [patrimonios, setPatrimonios] = useState<PatrimonioRow[]>([]);
+  const [patrimoniosLoading, setPatrimoniosLoading] = useState(false);
+  const [patrimoniosError, setPatrimoniosError] = useState<string | null>(null);
+
+  useEffect(() => {
+    getCronogramaMacro()
+      .then((data) => {
+        const map = new Map<number, string>();
+        (data.assignments || []).forEach((a: { propostaId?: number; inicioPrevisto?: string }) => {
+          if (a.propostaId != null && a.inicioPrevisto) {
+            const dateStr = typeof a.inicioPrevisto === 'string' ? a.inicioPrevisto.slice(0, 10) : '';
+            const current = map.get(a.propostaId);
+            if (!current || dateStr < current) map.set(a.propostaId, dateStr);
+          }
+        });
+        setInicioPorPropostaId(map);
+      })
+      .catch(() => setInicioPorPropostaId(new Map()));
+  }, [containers.length]);
+
+  useEffect(() => {
+    if (patrimoniosOpen) {
+      setPatrimoniosLoading(true);
+      setPatrimoniosError(null);
+      getPatrimoniosDisponiveis()
+        .then(setPatrimonios)
+        .catch((e) => setPatrimoniosError(e instanceof Error ? e.message : 'Erro ao carregar'))
+        .finally(() => setPatrimoniosLoading(false));
+    }
+  }, [patrimoniosOpen]);
 
   const handleSincronizar = async () => {
     setSyncing(true);
     setSyncError(null);
     try {
       await syncContainersFromApi();
+      const data = await getCronogramaMacro();
+      const map = new Map<number, string>();
+      (data.assignments || []).forEach((a: { propostaId?: number; inicioPrevisto?: string }) => {
+        if (a.propostaId != null && a.inicioPrevisto) {
+          const dateStr = typeof a.inicioPrevisto === 'string' ? a.inicioPrevisto.slice(0, 10) : '';
+          const current = map.get(a.propostaId);
+          if (!current || dateStr < current) map.set(a.propostaId, dateStr);
+        }
+      });
+      setInicioPorPropostaId(map);
     } catch (e) {
       setSyncError(e instanceof Error ? e.message : 'Erro ao sincronizar');
     } finally {
@@ -129,6 +181,48 @@ const ContainerList: React.FC = () => {
             </AlertDialogContent>
           </AlertDialog>
           
+          <Dialog open={patrimoniosOpen} onOpenChange={setPatrimoniosOpen}>
+            <DialogTrigger asChild>
+              <Button variant="outline" size="sm">
+                <Package className="w-4 h-4 mr-2" />
+                Patrimônios disponíveis
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="glass max-w-2xl max-h-[80vh] overflow-hidden flex flex-col">
+              <DialogHeader>
+                <DialogTitle>Patrimônios disponíveis</DialogTitle>
+              </DialogHeader>
+              <div className="overflow-auto flex-1 min-h-0">
+                {patrimoniosLoading && <p className="text-muted-foreground text-sm">Carregando...</p>}
+                {patrimoniosError && <p className="text-destructive text-sm">{patrimoniosError}</p>}
+                {!patrimoniosLoading && !patrimoniosError && (
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="border-border/50">
+                        <TableHead>TIPO</TableHead>
+                        <TableHead>GRUPO</TableHead>
+                        <TableHead>Patrimonio</TableHead>
+                        <TableHead>Descrição</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {patrimonios.map((p) => (
+                        <TableRow key={p.Id}>
+                          <TableCell>{p.TIPO ?? '-'}</TableCell>
+                          <TableCell>{p.GRUPO ?? '-'}</TableCell>
+                          <TableCell className="font-medium">{p.Patrimonio ?? '-'}</TableCell>
+                          <TableCell className="text-muted-foreground">{p.Descrição ?? '-'}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                )}
+                {!patrimoniosLoading && !patrimoniosError && patrimonios.length === 0 && (
+                  <p className="text-muted-foreground text-sm py-4">Nenhum patrimônio disponível.</p>
+                )}
+              </div>
+            </DialogContent>
+          </Dialog>
           <Button
             variant="outline"
             size="sm"
@@ -229,7 +323,11 @@ const ContainerList: React.FC = () => {
                     <TableCell>{container.type}</TableCell>
                     <TableCell>{container.cliente || '-'}</TableCell>
                     <TableCell className="text-muted-foreground">
-                      {container.startDate ? formatDate(container.startDate) : '-'}
+                      {inicioPorPropostaId.get(container.id)
+                        ? formatDate(inicioPorPropostaId.get(container.id)!)
+                        : container.startDate
+                          ? formatDate(container.startDate)
+                          : '-'}
                     </TableCell>
                     <TableCell>
                       <span className={cn(

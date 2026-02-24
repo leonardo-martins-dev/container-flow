@@ -36,6 +36,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { toast } from '@/hooks/use-toast';
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
 import { useContainerContext } from '@/contexts/ContainerContext';
 import { getWorkerColor } from '@/data/mockData';
@@ -47,7 +48,7 @@ import {
   getElapsedPercentage,
   cn,
 } from '@/lib/utils';
-import { getCronogramaMacro, getCronogramaDiario, postCronogramaGerar } from '@/lib/api';
+import { getCronogramaMacro, getCronogramaDiario, postCronogramaGerar, CronogramaGerarError, type CronogramaConflict } from '@/lib/api';
 
 type ViewMode = 'timeline' | 'chart' | 'individual' | 'macro' | 'diario';
 
@@ -64,9 +65,10 @@ const GanttChart: React.FC = () => {
   } | null>(null);
   const [, setTick] = useState(0);
   const [macroData, setMacroData] = useState<{ lines: number; days: number[]; assignments: Array<{ linha: number; dia: number; containerId?: string; propostaId?: number; inicioPrevisto?: string; fimPrevisto?: string }> } | null>(null);
-  const [diarioData, setDiarioData] = useState<{ date: string; byWorker: Record<number, Array<{ processoNome?: string; inicio?: string; fim?: string; horaExtraMinutos?: number }>> } | null>(null);
+  const [diarioData, setDiarioData] = useState<{ date: string; byWorker: Record<number, Array<{ processoNome?: string; inicio?: string; fim?: string; horaExtraMinutos?: number; workerId2?: number }>> } | null>(null);
   const [diarioDate, setDiarioDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [gerando, setGerando] = useState(false);
+  const [conflictsDialog, setConflictsDialog] = useState<CronogramaConflict[] | null>(null);
 
   // Update every second for real-time countdown
   useEffect(() => {
@@ -88,10 +90,20 @@ const GanttChart: React.FC = () => {
 
   const handleRecalcular = async () => {
     setGerando(true);
+    setConflictsDialog(null);
     try {
       await postCronogramaGerar();
       if (viewMode === 'macro') getCronogramaMacro().then(setMacroData);
       if (viewMode === 'diario') getCronogramaDiario(diarioDate).then(setDiarioData);
+    } catch (e) {
+      if (e instanceof CronogramaGerarError && e.conflicts.length > 0) {
+        setConflictsDialog(e.conflicts);
+      } else {
+        toast({
+          title: e instanceof Error ? e.message : 'Erro ao gerar cronograma',
+          variant: 'destructive',
+        });
+      }
     } finally {
       setGerando(false);
     }
@@ -579,8 +591,9 @@ const GanttChart: React.FC = () => {
                             left: `${(i / Math.max(tasks.length, 1)) * 100}%`,
                             width: `${(1 / Math.max(tasks.length, 1)) * 100 - 2}%`,
                           }}
+                          title={t.workerId2 ? `${t.processoNome ?? '-'} (2 pessoas)` : undefined}
                         >
-                          {t.processoNome ?? '-'}
+                          {t.processoNome ?? '-'}{t.workerId2 ? ' (2)' : ''}
                         </div>
                       ))}
                     </div>
@@ -610,6 +623,29 @@ const GanttChart: React.FC = () => {
           Recalcular
         </Button>
       </div>
+
+      <Dialog open={conflictsDialog !== null} onOpenChange={(open) => !open && setConflictsDialog(null)}>
+        <DialogContent className="glass max-w-lg max-h-[80vh] overflow-hidden flex flex-col">
+          <DialogHeader>
+            <DialogTitle>Conflitos de horário</DialogTitle>
+            <DialogDescription>
+              O cronograma não pode ser gerado: o mesmo trabalhador foi alocado em tarefas sobrepostas. Ajuste as regras ou os processos.
+            </DialogDescription>
+          </DialogHeader>
+          <ScrollArea className="flex-1 min-h-0 border rounded-md p-2">
+            <ul className="space-y-2 text-sm">
+              {conflictsDialog?.map((c, i) => (
+                <li key={i} className="text-muted-foreground">
+                  <span className="font-medium text-foreground">Worker {c.workerId}</span>, {c.data}: proposta {c.task1.proposta_id} processo {c.task1.processo_id} ({String(c.task1.inicio).slice(0, 16)} – {String(c.task1.fim).slice(11, 16)}) sobrepõe proposta {c.task2.proposta_id} processo {c.task2.processo_id} ({String(c.task2.inicio).slice(0, 16)} – {String(c.task2.fim).slice(11, 16)}).
+                </li>
+              ))}
+            </ul>
+          </ScrollArea>
+          <DialogFooter>
+            <Button onClick={() => setConflictsDialog(null)}>Fechar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* View Tabs */}
       <Tabs value={viewMode} onValueChange={(v) => setViewMode(v as ViewMode)}>

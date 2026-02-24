@@ -21,7 +21,8 @@ async function getMacro() {
       fimPrevisto: r.fim_previsto,
     }));
     return { lines: 7, days: [...Array(14)].map((_, i) => i), assignments };
-  } catch {
+  } catch (err) {
+    console.error('getMacro:', err);
     return { lines: 7, days: [...Array(14)].map((_, i) => i), assignments: cacheMacro.assignments };
   }
 }
@@ -29,7 +30,7 @@ async function getMacro() {
 async function getDiario(date) {
   try {
     const result = await query(
-      `SELECT id, data, worker_id, container_id, proposta_id, processo_id, processo_nome, inicio, fim, hora_extra_minutos
+      `SELECT id, data, worker_id, worker_id_2, container_id, proposta_id, processo_id, processo_nome, inicio, fim, hora_extra_minutos
        FROM container_flow.cronograma_diario
        WHERE data = @date
        ORDER BY worker_id, inicio`,
@@ -48,10 +49,12 @@ async function getDiario(date) {
         inicio: r.inicio,
         fim: r.fim,
         horaExtraMinutos: r.hora_extra_minutos || 0,
+        workerId2: r.worker_id_2 ?? undefined,
       });
     });
     return { date, byWorker };
-  } catch {
+  } catch (err) {
+    console.error('getDiario:', err);
     return { date, byWorker: {} };
   }
 }

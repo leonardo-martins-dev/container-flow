@@ -15,7 +15,7 @@ import {
   INITIAL_FACTORY_SLOTS_2,
 } from '@/data/mockData';
 import { calculateContainerStatus } from '@/lib/utils';
-import { getPropostas } from '@/lib/api';
+import { getPropostas, getRegras } from '@/lib/api';
 
 interface Alert {
   id: string;
@@ -58,7 +58,9 @@ interface ContainerContextType {
   
   // Sequencing Rules Actions
   updateSequencingRule: (processId: number, updates: Partial<SequencingRule>) => void;
+  setSequencingRules: (rules: SequencingRule[]) => void;
   resetSequencingRules: () => void;
+  loadRegrasFromApi: () => Promise<void>;
   
   // Factory Slots Actions
   updateFactorySlots: (slots: FactorySlot[]) => void;
@@ -245,6 +247,15 @@ export const ContainerProvider: React.FC<ContainerProviderProps> = ({ children }
     });
   }, []);
 
+  const setSequencingRulesList = useCallback((rules: SequencingRule[]) => {
+    setSequencingRules(rules);
+  }, []);
+
+  const loadRegrasFromApi = useCallback(async () => {
+    const regras = await getRegras();
+    setSequencingRules(Array.isArray(regras) ? regras : []);
+  }, []);
+
   const resetSequencingRules = useCallback(() => {
     setSequencingRules(MOCK_SEQUENCING_RULES);
     localStorage.removeItem('sequencingRules');
@@ -347,7 +358,9 @@ export const ContainerProvider: React.FC<ContainerProviderProps> = ({ children }
     updateContainerType,
     deleteContainerType,
     updateSequencingRule,
+    setSequencingRules: setSequencingRulesList,
     resetSequencingRules,
+    loadRegrasFromApi,
     updateFactorySlots,
     updateFactorySlots2,
     assignContainerToSlot,
