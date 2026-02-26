@@ -9,7 +9,6 @@ const config = {
     encrypt: false,
     trustServerCertificate: true,
     enableArithAbort: true,
-    instanceName: null,
   },
   pool: {
     max: 10,

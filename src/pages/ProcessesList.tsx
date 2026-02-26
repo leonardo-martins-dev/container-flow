@@ -8,7 +8,6 @@ import {
   X,
   Clock,
   Users,
-  GripVertical,
   Layers,
   FileText,
   Search,
@@ -51,6 +50,9 @@ const ProcessesList: React.FC = () => {
   const [showWorkersModal, setShowWorkersModal] = useState(false);
   const [selectedProcessWorkers, setSelectedProcessWorkers] = useState<{ process: any; workers: any[] }>({ process: null, workers: [] });
   const [newProcess, setNewProcess] = useState({ name: '', averageTimeMinutes: 60 });
+  const [processSavingId, setProcessSavingId] = useState<number | null>(null);
+  const [processDeletingId, setProcessDeletingId] = useState<number | null>(null);
+  const [addProcessSaving, setAddProcessSaving] = useState(false);
   const [validando, setValidando] = useState(false);
   const [validacaoResult, setValidacaoResult] = useState<{ ok: boolean; erros: string[] } | null>(null);
   const [regrasLoaded, setRegrasLoaded] = useState(false);
@@ -68,33 +70,54 @@ const ProcessesList: React.FC = () => {
     setEditTime(process.averageTimeMinutes.toString());
   };
 
-  const handleSaveEdit = (id: number) => {
-    updateProcess(id, {
-      name: editName,
-      averageTimeMinutes: parseInt(editTime) || 60,
-    });
-    setEditingId(null);
-    toast({ title: 'Processo atualizado' });
+  const handleSaveEdit = async (id: number) => {
+    setProcessSavingId(id);
+    try {
+      await updateProcess(id, {
+        name: editName,
+        averageTimeMinutes: parseInt(editTime) || 60,
+      });
+      setEditingId(null);
+      toast({ title: 'Processo atualizado' });
+    } catch (e) {
+      toast({ title: e instanceof Error ? e.message : 'Erro ao atualizar', variant: 'destructive' });
+    } finally {
+      setProcessSavingId(null);
+    }
   };
 
-  const handleAddProcess = () => {
+  const handleAddProcess = async () => {
     if (!newProcess.name.trim()) {
       toast({ title: 'Nome é obrigatório', variant: 'destructive' });
       return;
     }
-    addProcess({
-      name: newProcess.name.toUpperCase(),
-      averageTimeMinutes: newProcess.averageTimeMinutes,
-      order: processes.length + 1,
-    });
-    setShowNewModal(false);
-    setNewProcess({ name: '', averageTimeMinutes: 60 });
-    toast({ title: 'Processo adicionado' });
+    setAddProcessSaving(true);
+    try {
+      await addProcess({
+        name: newProcess.name.toUpperCase(),
+        averageTimeMinutes: newProcess.averageTimeMinutes,
+        order: processes.length + 1,
+      });
+      setShowNewModal(false);
+      setNewProcess({ name: '', averageTimeMinutes: 60 });
+      toast({ title: 'Processo adicionado' });
+    } catch (e) {
+      toast({ title: e instanceof Error ? e.message : 'Erro ao adicionar', variant: 'destructive' });
+    } finally {
+      setAddProcessSaving(false);
+    }
   };
 
-  const handleDeleteProcess = (id: number) => {
-    deleteProcess(id);
-    toast({ title: 'Processo removido' });
+  const handleDeleteProcess = async (id: number) => {
+    setProcessDeletingId(id);
+    try {
+      await deleteProcess(id);
+      toast({ title: 'Processo removido' });
+    } catch (e) {
+      toast({ title: e instanceof Error ? e.message : 'Erro ao remover', variant: 'destructive' });
+    } finally {
+      setProcessDeletingId(null);
+    }
   };
 
   const getWorkersForProcess = (processId: number) => {
@@ -224,7 +247,6 @@ const ProcessesList: React.FC = () => {
               <Table>
                 <TableHeader>
                   <TableRow className="border-border/50">
-                    <TableHead className="w-12"></TableHead>
                     <TableHead>Nome</TableHead>
                     <TableHead>Tempo Médio</TableHead>
                     <TableHead>Trabalhadores</TableHead>
@@ -246,9 +268,6 @@ const ProcessesList: React.FC = () => {
                           transition={{ delay: index * 0.03 }}
                           className="border-border/30"
                         >
-                          <TableCell>
-                            <GripVertical className="w-4 h-4 text-muted-foreground cursor-grab" />
-                          </TableCell>
                           <TableCell>
                             {isEditing ? (
                               <Input
@@ -292,13 +311,15 @@ const ProcessesList: React.FC = () => {
                                   size="icon"
                                   variant="ghost"
                                   onClick={() => handleSaveEdit(process.id)}
+                                  disabled={processSavingId === process.id}
                                 >
-                                  <Save className="w-4 h-4 text-success" />
+                                  {processSavingId === process.id ? <span className="text-xs">...</span> : <Save className="w-4 h-4 text-success" />}
                                 </Button>
                                 <Button
                                   size="icon"
                                   variant="ghost"
                                   onClick={() => setEditingId(null)}
+                                  disabled={processSavingId === process.id}
                                 >
                                   <X className="w-4 h-4" />
                                 </Button>
@@ -309,6 +330,7 @@ const ProcessesList: React.FC = () => {
                                   size="icon"
                                   variant="ghost"
                                   onClick={() => handleEdit(process)}
+                                  disabled={processDeletingId === process.id}
                                 >
                                   <Edit2 className="w-4 h-4" />
                                 </Button>
@@ -317,8 +339,9 @@ const ProcessesList: React.FC = () => {
                                   variant="ghost"
                                   onClick={() => handleDeleteProcess(process.id)}
                                   className="text-destructive hover:text-destructive"
+                                  disabled={processDeletingId === process.id}
                                 >
-                                  <Trash2 className="w-4 h-4" />
+                                  {processDeletingId === process.id ? <span className="text-xs">...</span> : <Trash2 className="w-4 h-4" />}
                                 </Button>
                               </div>
                             )}
@@ -632,11 +655,11 @@ const ProcessesList: React.FC = () => {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowNewModal(false)}>
+            <Button variant="outline" onClick={() => setShowNewModal(false)} disabled={addProcessSaving}>
               Cancelar
             </Button>
-            <Button onClick={handleAddProcess} className="gradient-primary text-primary-foreground">
-              Adicionar
+            <Button onClick={handleAddProcess} className="gradient-primary text-primary-foreground" disabled={addProcessSaving}>
+              {addProcessSaving ? 'Adicionando...' : 'Adicionar'}
             </Button>
           </DialogFooter>
         </DialogContent>

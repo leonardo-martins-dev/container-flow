@@ -21,14 +21,20 @@ if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
     exit 1
 }
 
-# Verificar se docker-compose está disponível
-$dockerComposeCmd = "docker compose"
-if (-not (docker compose version 2>$null)) {
-    $dockerComposeCmd = "docker-compose"
-    if (-not (Get-Command docker-compose -ErrorAction SilentlyContinue)) {
-        Write-Host "❌ docker-compose não encontrado!" -ForegroundColor Red
-        exit 1
-    }
+# Verificar se docker compose está disponível (plugin "docker compose" primeiro, depois "docker-compose")
+$dockerComposeCmd = @()
+if (Get-Command docker -ErrorAction SilentlyContinue) {
+    try {
+        $null = docker compose version 2>&1
+        if ($LASTEXITCODE -eq 0) { $dockerComposeCmd = @("docker", "compose") }
+    } catch {}
+}
+if ($dockerComposeCmd.Count -eq 0 -and (Get-Command docker-compose -ErrorAction SilentlyContinue)) {
+    $dockerComposeCmd = @("docker-compose")
+}
+if ($dockerComposeCmd.Count -eq 0) {
+    Write-Host "❌ docker compose não encontrado! Instale o Docker Desktop (inclui o plugin 'docker compose')." -ForegroundColor Red
+    exit 1
 }
 
 # Verificar se o arquivo de backup existe
@@ -44,35 +50,77 @@ function Start-SQLServer {
     
     Push-Location $PSScriptRoot
     try {
-        & $dockerComposeCmd up -d
+        $args = @($dockerComposeCmd[1..($dockerComposeCmd.Count-1)] + "up", "-d")
+        & $dockerComposeCmd[0] @args
         Write-Host ""
         Write-Host "✅ SQL Server iniciado com sucesso!" -ForegroundColor Green
         Write-Host ""
-        Write-Host "Aguardando SQL Server ficar pronto..." -ForegroundColor Yellow
-        
-        $maxAttempts = 30
+        Write-Host "Aguardando container e SQL Server ficarem prontos..." -ForegroundColor Yellow
+
+        $containerName = $null
+        $maxAttempts = 45
         $attempt = 0
         $ready = $false
-        
+
+        function Get-SQLServerContainerName {
+            $out = docker ps --filter "name=container-flow-sqlserver" --format '{{.Names}}' 2>$null | Out-String
+            if ($out) { $n = $out.Trim().Split("`n")[0].Trim(); if ($n) { return $n } }
+            $out = docker ps --filter "ancestor=mcr.microsoft.com/mssql/server:2022-latest" --format '{{.Names}}' 2>$null | Out-String
+            if ($out) { $n = $out.Trim().Split("`n")[0].Trim(); if ($n) { return $n } }
+            if ($dockerComposeCmd.Count -ge 2) {
+                $prevErr = $ErrorActionPreference
+                $ErrorActionPreference = 'SilentlyContinue'
+                try {
+                    $composeArgs = @($dockerComposeCmd[1..($dockerComposeCmd.Count-1)] + "ps", "-q")
+                    $id = & $dockerComposeCmd[0] @composeArgs 2>$null
+                    if ($id) {
+                        $id = ($id | Out-String).Trim().Split("`n")[0].Trim()
+                        if ($id) {
+                            $name = docker inspect --format '{{.Name}}' $id 2>$null | Out-String
+                            if ($name) { return ($name.Trim().Split("`n")[0].Trim()).TrimStart('/') }
+                        }
+                    }
+                } finally {
+                    $ErrorActionPreference = $prevErr
+                }
+            }
+            return $null
+        }
+
         while ($attempt -lt $maxAttempts -and -not $ready) {
             Start-Sleep -Seconds 2
             $attempt++
-            
-            $result = docker exec container-flow-sqlserver /opt/mssql-tools/bin/sqlcmd `
+
+            if (-not $containerName) {
+                $containerName = Get-SQLServerContainerName
+            }
+            if (-not $containerName) {
+                Write-Host "   Aguardando container... ($attempt/$maxAttempts)" -ForegroundColor Gray
+                continue
+            }
+
+            $result = docker exec $containerName /opt/mssql-tools18/bin/sqlcmd `
                 -S localhost -U sa -P "YourStrong@Passw0rd" `
                 -Q "SELECT 1" 2>&1
-            
+
             if ($LASTEXITCODE -eq 0) {
                 $ready = $true
-                Write-Host "✅ SQL Server está pronto!" -ForegroundColor Green
+                Write-Host "✅ SQL Server está pronto! (container: $containerName)" -ForegroundColor Green
             } else {
-                Write-Host "   Aguardando... ($attempt/$maxAttempts)" -ForegroundColor Gray
+                Write-Host "   Aguardando SQL Server... ($attempt/$maxAttempts)" -ForegroundColor Gray
             }
         }
-        
+
         if (-not $ready) {
             Write-Host "⚠️  SQL Server pode não estar totalmente pronto ainda." -ForegroundColor Yellow
-            Write-Host "   Execute 'docker logs container-flow-sqlserver' para verificar." -ForegroundColor Yellow
+            if ($containerName) {
+                Write-Host "   Execute 'docker logs $containerName' para verificar." -ForegroundColor Yellow
+            } else {
+                Write-Host "   Container nao encontrado. Verifique com 'docker ps -a'." -ForegroundColor Yellow
+            }
+        } elseif ($backupFile -and (Test-Path $backupFile)) {
+            Write-Host ""
+            Restore-Backup
         }
         
         Show-ConnectionInfo
@@ -85,7 +133,8 @@ function Stop-SQLServer {
     Write-Host "🛑 Parando SQL Server..." -ForegroundColor Yellow
     Push-Location $PSScriptRoot
     try {
-        & $dockerComposeCmd down
+        $args = @($dockerComposeCmd[1..($dockerComposeCmd.Count-1)] + "down")
+        & $dockerComposeCmd[0] @args
         Write-Host "✅ SQL Server parado." -ForegroundColor Green
     } finally {
         Pop-Location
@@ -103,7 +152,7 @@ function Show-Status {
     Write-Host "📊 Status do SQL Server:" -ForegroundColor Cyan
     Write-Host ""
     
-    $container = docker ps -a --filter "name=container-flow-sqlserver" --format "{{.Names}}|{{.Status}}|{{.Ports}}"
+    $container = docker ps -a --filter "name=container-flow-sqlserver" --format '{{.Names}}|{{.Status}}|{{.Ports}}'
     
     if ($container) {
         $parts = $container -split '\|'
@@ -141,7 +190,7 @@ function Restore-Backup {
     Write-Host "Criando banco de dados 'BancoTAM'..." -ForegroundColor Yellow
     
     # Criar banco de dados
-    docker exec container-flow-sqlserver /opt/mssql-tools/bin/sqlcmd `
+    docker exec container-flow-sqlserver /opt/mssql-tools18/bin/sqlcmd `
         -S localhost -U sa -P "YourStrong@Passw0rd" `
         -Q "IF NOT EXISTS (SELECT name FROM sys.databases WHERE name = 'BancoTAM') CREATE DATABASE BancoTAM;" `
         2>&1 | Out-Null
@@ -160,7 +209,7 @@ FROM DISK = '/backup/BancoTAM'
 WITH REPLACE, RECOVERY;
 "@
     
-    docker exec container-flow-sqlserver /opt/mssql-tools/bin/sqlcmd `
+    docker exec container-flow-sqlserver /opt/mssql-tools18/bin/sqlcmd `
         -S localhost -U sa -P "YourStrong@Passw0rd" `
         -Q $restoreScript
     
@@ -204,7 +253,7 @@ function Connect-SQLServer {
     Write-Host "Digite comandos SQL. Digite 'EXIT' ou 'QUIT' para sair." -ForegroundColor Yellow
     Write-Host ""
     
-    docker exec -it container-flow-sqlserver /opt/mssql-tools/bin/sqlcmd `
+    docker exec -it container-flow-sqlserver /opt/mssql-tools18/bin/sqlcmd `
         -S localhost -U sa -P "YourStrong@Passw0rd" `
         -d BancoTAM
 }

@@ -47,6 +47,8 @@ const WorkerManagement: React.FC = () => {
     level: 'junior' as 'junior' | 'senior',
     specialtyProcessIds: [] as number[],
   });
+  const [saving, setSaving] = useState(false);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
 
   const filteredWorkers = filterProcess === 'all'
     ? workers
@@ -71,21 +73,26 @@ const WorkerManagement: React.FC = () => {
     setShowModal(true);
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!formData.name.trim()) {
       toast({ title: 'Nome é obrigatório', variant: 'destructive' });
       return;
     }
-
-    if (editingWorker) {
-      updateWorker(editingWorker.id, formData);
-      toast({ title: 'Trabalhador atualizado' });
-    } else {
-      addWorker(formData);
-      toast({ title: 'Trabalhador adicionado' });
+    setSaving(true);
+    try {
+      if (editingWorker) {
+        await updateWorker(editingWorker.id, formData);
+        toast({ title: 'Trabalhador atualizado' });
+      } else {
+        await addWorker(formData);
+        toast({ title: 'Trabalhador adicionado' });
+      }
+      setShowModal(false);
+    } catch (e) {
+      toast({ title: e instanceof Error ? e.message : 'Erro ao salvar', variant: 'destructive' });
+    } finally {
+      setSaving(false);
     }
-
-    setShowModal(false);
   };
 
   const toggleSpecialty = (processId: number) => {
@@ -97,9 +104,16 @@ const WorkerManagement: React.FC = () => {
     }));
   };
 
-  const handleDelete = (id: number) => {
-    deleteWorker(id);
-    toast({ title: 'Trabalhador removido' });
+  const handleDelete = async (id: number) => {
+    setDeletingId(id);
+    try {
+      await deleteWorker(id);
+      toast({ title: 'Trabalhador removido' });
+    } catch (e) {
+      toast({ title: e instanceof Error ? e.message : 'Erro ao remover', variant: 'destructive' });
+    } finally {
+      setDeletingId(null);
+    }
   };
 
   return (
@@ -196,8 +210,13 @@ const WorkerManagement: React.FC = () => {
                         variant="ghost"
                         onClick={() => handleDelete(worker.id)}
                         className="text-destructive hover:text-destructive"
+                        disabled={deletingId === worker.id}
                       >
-                        <Trash2 className="w-4 h-4" />
+                        {deletingId === worker.id ? (
+                          <span className="text-xs">...</span>
+                        ) : (
+                          <Trash2 className="w-4 h-4" />
+                        )}
                       </Button>
                     </div>
                   </div>
@@ -318,11 +337,11 @@ const WorkerManagement: React.FC = () => {
           </div>
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowModal(false)}>
+            <Button variant="outline" onClick={() => setShowModal(false)} disabled={saving}>
               Cancelar
             </Button>
-            <Button onClick={handleSave} className="gradient-primary text-primary-foreground">
-              {editingWorker ? 'Atualizar' : 'Adicionar'}
+            <Button onClick={handleSave} className="gradient-primary text-primary-foreground" disabled={saving}>
+              {saving ? 'Salvando...' : editingWorker ? 'Atualizar' : 'Adicionar'}
             </Button>
           </DialogFooter>
         </DialogContent>

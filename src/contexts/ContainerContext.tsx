@@ -6,16 +6,11 @@ import {
   ContainerType,
   SequencingRule,
   FactorySlot,
-  MOCK_CONTAINERS,
-  MOCK_PROCESSES,
-  MOCK_WORKERS,
-  MOCK_CONTAINER_TYPES,
-  MOCK_SEQUENCING_RULES,
   INITIAL_FACTORY_SLOTS,
   INITIAL_FACTORY_SLOTS_2,
 } from '@/data/mockData';
 import { calculateContainerStatus } from '@/lib/utils';
-import { getPropostas, getRegras } from '@/lib/api';
+import { getRegras, getProcessos, getWorkers, getContainerTypes, getContainers, createContainer as apiCreateContainer, updateContainer as apiUpdateContainer, deleteContainer as apiDeleteContainer, syncContainersFromPropostas, getFactoryLayout, saveFactoryLayout, createProcess as apiCreateProcess, updateProcess as apiUpdateProcess, deleteProcess as apiDeleteProcess, createWorker as apiCreateWorker, updateWorker as apiUpdateWorker, deleteWorker as apiDeleteWorker, createContainerType as apiCreateContainerType, updateContainerType as apiUpdateContainerType, deleteContainerType as apiDeleteContainerType } from '@/lib/api';
 
 interface Alert {
   id: string;
@@ -37,24 +32,24 @@ interface ContainerContextType {
   alerts: Alert[];
   
   // Container Actions
-  addContainer: (container: Omit<Container, 'id' | 'createdAt'>) => void;
-  updateContainer: (id: number, updates: Partial<Container>) => void;
-  deleteContainer: (id: number) => void;
+  addContainer: (container: Omit<Container, 'id' | 'createdAt'>) => Promise<void>;
+  updateContainer: (id: number, updates: Partial<Container>) => Promise<void>;
+  deleteContainer: (id: number) => Promise<void>;
   
   // Process Actions
-  addProcess: (process: Omit<Process, 'id'>) => void;
-  updateProcess: (id: number, updates: Partial<Process>) => void;
-  deleteProcess: (id: number) => void;
+  addProcess: (process: Omit<Process, 'id'>) => Promise<void>;
+  updateProcess: (id: number, updates: Partial<Process>) => Promise<void>;
+  deleteProcess: (id: number) => Promise<void>;
   
   // Worker Actions
-  addWorker: (worker: Omit<Worker, 'id'>) => void;
-  updateWorker: (id: number, updates: Partial<Worker>) => void;
-  deleteWorker: (id: number) => void;
+  addWorker: (worker: Omit<Worker, 'id'>) => Promise<void>;
+  updateWorker: (id: number, updates: Partial<Worker>) => Promise<void>;
+  deleteWorker: (id: number) => Promise<void>;
   
   // Container Type Actions
-  addContainerType: (type: Omit<ContainerType, 'id'>) => void;
-  updateContainerType: (id: number, updates: Partial<ContainerType>) => void;
-  deleteContainerType: (id: number) => void;
+  addContainerType: (type: Omit<ContainerType, 'id'>) => Promise<void>;
+  updateContainerType: (id: number, updates: Partial<ContainerType>) => Promise<void>;
+  deleteContainerType: (id: number) => Promise<void>;
   
   // Sequencing Rules Actions
   updateSequencingRule: (processId: number, updates: Partial<SequencingRule>) => void;
@@ -91,148 +86,98 @@ interface ContainerProviderProps {
 }
 
 export const ContainerProvider: React.FC<ContainerProviderProps> = ({ children }) => {
-  // Initialize state from localStorage or mock data
-  const [containers, setContainers] = useState<Container[]>(() => {
-    const saved = localStorage.getItem('containers');
-    return saved ? JSON.parse(saved) : MOCK_CONTAINERS;
-  });
-  
-  const [processes, setProcesses] = useState<Process[]>(() => {
-    const saved = localStorage.getItem('processes');
-    return saved ? JSON.parse(saved) : MOCK_PROCESSES;
-  });
-  
-  const [workers, setWorkers] = useState<Worker[]>(() => {
-    const saved = localStorage.getItem('workers');
-    return saved ? JSON.parse(saved) : MOCK_WORKERS;
-  });
-  
-  const [containerTypes, setContainerTypes] = useState<ContainerType[]>(() => {
-    const saved = localStorage.getItem('containerTypes');
-    return saved ? JSON.parse(saved) : MOCK_CONTAINER_TYPES;
-  });
-  
-  const [sequencingRules, setSequencingRules] = useState<SequencingRule[]>(() => {
-    const saved = localStorage.getItem('sequencingRules');
-    return saved ? JSON.parse(saved) : MOCK_SEQUENCING_RULES;
-  });
-  
+  const [containers, setContainers] = useState<Container[]>([]);
+  const [processes, setProcesses] = useState<Process[]>([]);
+  const [workers, setWorkers] = useState<Worker[]>([]);
+  const [containerTypes, setContainerTypes] = useState<ContainerType[]>([]);
+  const [sequencingRules, setSequencingRules] = useState<SequencingRule[]>([]);
   const [factorySlots, setFactorySlots] = useState<FactorySlot[]>(() => {
     const saved = localStorage.getItem('factoryLayout');
     return saved ? JSON.parse(saved) : INITIAL_FACTORY_SLOTS;
   });
-  
   const [factorySlots2, setFactorySlots2] = useState<FactorySlot[]>(() => {
     const saved = localStorage.getItem('factoryLayout2');
     return saved ? JSON.parse(saved) : INITIAL_FACTORY_SLOTS_2;
   });
-  
   const [alerts, setAlerts] = useState<Alert[]>([]);
 
-  // Persist to localStorage
-  useEffect(() => {
-    localStorage.setItem('containers', JSON.stringify(containers));
-  }, [containers]);
-  
-  useEffect(() => {
-    localStorage.setItem('processes', JSON.stringify(processes));
-  }, [processes]);
-  
-  useEffect(() => {
-    localStorage.setItem('workers', JSON.stringify(workers));
-  }, [workers]);
-  
-  useEffect(() => {
-    localStorage.setItem('containerTypes', JSON.stringify(containerTypes));
-  }, [containerTypes]);
-  
-  useEffect(() => {
-    localStorage.setItem('sequencingRules', JSON.stringify(sequencingRules));
-  }, [sequencingRules]);
-  
   useEffect(() => {
     localStorage.setItem('factoryLayout', JSON.stringify(factorySlots));
   }, [factorySlots]);
-  
   useEffect(() => {
     localStorage.setItem('factoryLayout2', JSON.stringify(factorySlots2));
   }, [factorySlots2]);
 
   // Container Actions
-  const addContainer = useCallback((container: Omit<Container, 'id' | 'createdAt'>) => {
-    const newContainer: Container = {
-      ...container,
-      id: Date.now(),
-      createdAt: new Date().toISOString(),
-    };
-    setContainers(prev => [...prev, newContainer]);
+  const addContainer = useCallback(async (container: Omit<Container, 'id' | 'createdAt'>) => {
+    const created = await apiCreateContainer(container);
+    setContainers(prev => [...prev, created as Container]);
   }, []);
 
-  const updateContainer = useCallback((id: number, updates: Partial<Container>) => {
-    setContainers(prev => prev.map(c => 
-      c.id === id ? { ...c, ...updates, currentStatus: calculateContainerStatus(updates.processStages || c.processStages) } : c
+  const updateContainer = useCallback(async (id: number, updates: Partial<Container>) => {
+    const updated = await apiUpdateContainer(id, updates);
+    const newStatus = calculateContainerStatus(updates.processStages ?? updated.processStages ?? []);
+    setContainers(prev => prev.map(c =>
+      c.id === id ? { ...c, ...updated, currentStatus: newStatus } : c
     ));
   }, []);
 
-  const deleteContainer = useCallback((id: number) => {
+  const deleteContainer = useCallback(async (id: number) => {
+    await apiDeleteContainer(id);
     setContainers(prev => prev.filter(c => c.id !== id));
-    // Remove from slots
-    setFactorySlots(prev => prev.map(slot => 
+    setFactorySlots(prev => prev.map(slot =>
       slot.containerId === id ? { ...slot, containerId: null } : slot
     ));
-    setFactorySlots2(prev => prev.map(slot => 
+    setFactorySlots2(prev => prev.map(slot =>
       slot.containerId === id ? { ...slot, containerId: null } : slot
     ));
   }, []);
 
   // Process Actions
-  const addProcess = useCallback((process: Omit<Process, 'id'>) => {
-    const newProcess: Process = {
-      ...process,
-      id: Math.max(0, ...processes.map(p => p.id)) + 1,
-    };
-    setProcesses(prev => [...prev, newProcess]);
-  }, [processes]);
-
-  const updateProcess = useCallback((id: number, updates: Partial<Process>) => {
-    setProcesses(prev => prev.map(p => p.id === id ? { ...p, ...updates } : p));
+  const addProcess = useCallback(async (process: Omit<Process, 'id'>) => {
+    const created = await apiCreateProcess(process);
+    setProcesses(prev => [...prev, created]);
   }, []);
 
-  const deleteProcess = useCallback((id: number) => {
+  const updateProcess = useCallback(async (id: number, updates: Partial<Process>) => {
+    const updated = await apiUpdateProcess(id, updates);
+    setProcesses(prev => prev.map(p => p.id === id ? { ...p, ...updated } : p));
+  }, []);
+
+  const deleteProcess = useCallback(async (id: number) => {
+    await apiDeleteProcess(id);
     setProcesses(prev => prev.filter(p => p.id !== id));
   }, []);
 
   // Worker Actions
-  const addWorker = useCallback((worker: Omit<Worker, 'id'>) => {
-    const newWorker: Worker = {
-      ...worker,
-      id: Math.max(0, ...workers.map(w => w.id)) + 1,
-    };
-    setWorkers(prev => [...prev, newWorker]);
-  }, [workers]);
-
-  const updateWorker = useCallback((id: number, updates: Partial<Worker>) => {
-    setWorkers(prev => prev.map(w => w.id === id ? { ...w, ...updates } : w));
+  const addWorker = useCallback(async (worker: Omit<Worker, 'id'>) => {
+    const created = await apiCreateWorker(worker);
+    setWorkers(prev => [...prev, created]);
   }, []);
 
-  const deleteWorker = useCallback((id: number) => {
+  const updateWorker = useCallback(async (id: number, updates: Partial<Worker>) => {
+    const updated = await apiUpdateWorker(id, updates);
+    setWorkers(prev => prev.map(w => w.id === id ? { ...w, ...updated } : w));
+  }, []);
+
+  const deleteWorker = useCallback(async (id: number) => {
+    await apiDeleteWorker(id);
     setWorkers(prev => prev.filter(w => w.id !== id));
   }, []);
 
   // Container Type Actions
-  const addContainerType = useCallback((type: Omit<ContainerType, 'id'>) => {
-    const newType: ContainerType = {
-      ...type,
-      id: Math.max(0, ...containerTypes.map(t => t.id)) + 1,
-    };
-    setContainerTypes(prev => [...prev, newType]);
-  }, [containerTypes]);
-
-  const updateContainerType = useCallback((id: number, updates: Partial<ContainerType>) => {
-    setContainerTypes(prev => prev.map(t => t.id === id ? { ...t, ...updates } : t));
+  const addContainerType = useCallback(async (type: Omit<ContainerType, 'id'>) => {
+    const created = await apiCreateContainerType(type);
+    setContainerTypes(prev => [...prev, created]);
   }, []);
 
-  const deleteContainerType = useCallback((id: number) => {
+  const updateContainerType = useCallback(async (id: number, updates: Partial<ContainerType>) => {
+    const updated = await apiUpdateContainerType(id, updates);
+    setContainerTypes(prev => prev.map(t => t.id === id ? { ...t, ...updated } : t));
+  }, []);
+
+  const deleteContainerType = useCallback(async (id: number) => {
+    await apiDeleteContainerType(id);
     setContainerTypes(prev => prev.filter(t => t.id !== id));
   }, []);
 
@@ -257,47 +202,56 @@ export const ContainerProvider: React.FC<ContainerProviderProps> = ({ children }
   }, []);
 
   const resetSequencingRules = useCallback(() => {
-    setSequencingRules(MOCK_SEQUENCING_RULES);
-    localStorage.removeItem('sequencingRules');
-  }, []);
+    loadRegrasFromApi();
+  }, [loadRegrasFromApi]);
 
-  // Factory Slots Actions
+  // Factory Slots Actions (persist to API)
   const updateFactorySlots = useCallback((slots: FactorySlot[]) => {
     setFactorySlots(slots);
-  }, []);
+    saveFactoryLayout({ floor1: slots, floor2: factorySlots2 }).catch(() => {});
+  }, [factorySlots2]);
 
   const updateFactorySlots2 = useCallback((slots: FactorySlot[]) => {
     setFactorySlots2(slots);
-  }, []);
+    saveFactoryLayout({ floor1: factorySlots, floor2: slots }).catch(() => {});
+  }, [factorySlots]);
 
   const assignContainerToSlot = useCallback((containerId: number, slotId: string, floorId: number) => {
+    let newFloor1 = factorySlots;
+    let newFloor2 = factorySlots2;
     if (floorId === 1) {
-      setFactorySlots(prev => prev.map(slot => ({
+      newFloor1 = factorySlots.map(slot => ({
         ...slot,
         containerId: slot.id === slotId ? containerId : (slot.containerId === containerId ? null : slot.containerId)
-      })));
+      }));
     } else {
-      setFactorySlots2(prev => prev.map(slot => ({
+      newFloor2 = factorySlots2.map(slot => ({
         ...slot,
         containerId: slot.id === slotId ? containerId : (slot.containerId === containerId ? null : slot.containerId)
-      })));
+      }));
     }
-    setContainers(prev => prev.map(c => 
+    setFactorySlots(newFloor1);
+    setFactorySlots2(newFloor2);
+    saveFactoryLayout({ floor1: newFloor1, floor2: newFloor2 }).catch(() => {});
+    setContainers(prev => prev.map(c =>
       c.id === containerId ? { ...c, slotId, floorId } : c
     ));
-  }, []);
+  }, [factorySlots, factorySlots2]);
 
   const removeContainerFromSlot = useCallback((containerId: number) => {
-    setFactorySlots(prev => prev.map(slot => 
+    const newFloor1 = factorySlots.map(slot =>
       slot.containerId === containerId ? { ...slot, containerId: null } : slot
-    ));
-    setFactorySlots2(prev => prev.map(slot => 
+    );
+    const newFloor2 = factorySlots2.map(slot =>
       slot.containerId === containerId ? { ...slot, containerId: null } : slot
-    ));
-    setContainers(prev => prev.map(c => 
+    );
+    setFactorySlots(newFloor1);
+    setFactorySlots2(newFloor2);
+    saveFactoryLayout({ floor1: newFloor1, floor2: newFloor2 }).catch(() => {});
+    setContainers(prev => prev.map(c =>
       c.id === containerId ? { ...c, slotId: undefined, floorId: undefined } : c
     ));
-  }, []);
+  }, [factorySlots, factorySlots2]);
 
   // Alert Actions
   const dismissAlert = useCallback((alertId: string) => {
@@ -309,20 +263,39 @@ export const ContainerProvider: React.FC<ContainerProviderProps> = ({ children }
   }, []);
 
   const syncContainersFromApi = useCallback(async () => {
-    const propostas = await getPropostas();
-    const mapped: Container[] = propostas.map((p) => ({
-      id: p.ID,
-      number: p.Patrimonio || p.Ordem_Prod || String(p.ID),
-      type: p.TIPO_PROD || p.Produto || '-',
-      cliente: p.Cliente || '-',
-      deliveryDeadline: p.Data_Firmada ? new Date(p.Data_Firmada).toISOString().slice(0, 10) : '',
-      startDate: '',
-      currentStatus: 'pending' as const,
-      processStages: [],
-      createdAt: new Date().toISOString(),
-    }));
-    setContainers(mapped);
+    await syncContainersFromPropostas();
+    const list = await getContainers();
+    setContainers(list as Container[]);
   }, []);
+
+  const loadContainers = useCallback(async () => {
+    const list = await getContainers();
+    setContainers(list as Container[]);
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    loadContainers().catch(() => {});
+    getProcessos()
+      .then((data) => { if (!cancelled) setProcesses(data); })
+      .catch(() => {});
+    getWorkers()
+      .then((data) => { if (!cancelled) setWorkers(data); })
+      .catch(() => {});
+    getContainerTypes()
+      .then((data) => { if (!cancelled) setContainerTypes(data); })
+      .catch(() => {});
+    getRegras()
+      .then((data) => { if (!cancelled) setSequencingRules(Array.isArray(data) ? data : []); })
+      .catch(() => {});
+    getFactoryLayout()
+      .then((data) => {
+        if (!cancelled && data.floor1?.length) setFactorySlots(data.floor1 as FactorySlot[]);
+        if (!cancelled && data.floor2?.length) setFactorySlots2(data.floor2 as FactorySlot[]);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [loadContainers]);
 
   // Auto-update status every 30 seconds
   useEffect(() => {

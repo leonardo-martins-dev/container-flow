@@ -48,6 +48,7 @@ const ContainerForm: React.FC = () => {
   const [processWorkers, setProcessWorkers] = useState<Record<number, number[]>>({});
   const [manualDeadline, setManualDeadline] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (existingContainer) {
@@ -102,7 +103,7 @@ const ContainerForm: React.FC = () => {
     return workers.filter(w => w.specialtyProcessIds.includes(processId));
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!formData.number || !formData.type || !formData.deliveryDeadline) {
       toast({
         title: 'Campos obrigatórios',
@@ -139,21 +140,31 @@ const ContainerForm: React.FC = () => {
       processStages,
     };
 
-    if (isEdit && existingContainer) {
-      updateContainer(existingContainer.id, containerData);
+    setSaving(true);
+    try {
+      if (isEdit && existingContainer) {
+        await updateContainer(existingContainer.id, containerData);
+        toast({
+          title: 'Container atualizado',
+          description: `${formData.number} foi atualizado com sucesso.`,
+        });
+      } else {
+        await addContainer(containerData);
+        toast({
+          title: 'Container criado',
+          description: `${formData.number} foi criado com sucesso.`,
+        });
+      }
+      navigate('/containers');
+    } catch (e) {
       toast({
-        title: 'Container atualizado',
-        description: `${formData.number} foi atualizado com sucesso.`,
+        variant: 'destructive',
+        title: isEdit ? 'Erro ao atualizar' : 'Erro ao criar',
+        description: e instanceof Error ? e.message : 'Erro ao salvar o container.',
       });
-    } else {
-      addContainer(containerData);
-      toast({
-        title: 'Container criado',
-        description: `${formData.number} foi criado com sucesso.`,
-      });
+    } finally {
+      setSaving(false);
     }
-
-    navigate('/containers');
   };
 
   return (
@@ -326,9 +337,9 @@ const ContainerForm: React.FC = () => {
           <Button variant="outline" onClick={() => navigate(-1)}>
             Cancelar
           </Button>
-          <Button onClick={handleSave} className="gradient-primary text-primary-foreground">
+          <Button onClick={handleSave} disabled={saving} className="gradient-primary text-primary-foreground">
             <Save className="w-4 h-4 mr-2" />
-            {isEdit ? 'Atualizar' : 'Criar Container'}
+            {saving ? 'Salvando...' : (isEdit ? 'Atualizar' : 'Criar Container')}
           </Button>
         </div>
       </div>

@@ -48,6 +48,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
+import { useToast } from '@/hooks/use-toast';
 import { useContainerContext } from '@/contexts/ContainerContext';
 import { getPatrimoniosDisponiveis, getCronogramaMacro } from '@/lib/api';
 import type { PatrimonioRow } from '@/lib/api';
@@ -67,11 +68,14 @@ const statusConfig = {
 
 const ContainerList: React.FC = () => {
   const navigate = useNavigate();
+  const { toast } = useToast();
   const { containers, deleteContainer, syncContainersFromApi } = useContainerContext();
   const [searchTerm, setSearchTerm] = useState('');
   const [progressFilter, setProgressFilter] = useState<'all' | 'above' | 'below'>('all');
   const [syncing, setSyncing] = useState(false);
   const [syncError, setSyncError] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [deletingAll, setDeletingAll] = useState(false);
   const [inicioPorPropostaId, setInicioPorPropostaId] = useState<Map<number, string>>(new Map());
   const [patrimoniosOpen, setPatrimoniosOpen] = useState(false);
   const [patrimonios, setPatrimonios] = useState<PatrimonioRow[]>([]);
@@ -143,8 +147,51 @@ const ContainerList: React.FC = () => {
     })
     .sort((a, b) => new Date(a.deliveryDeadline).getTime() - new Date(b.deliveryDeadline).getTime());
 
-  const handleDeleteAll = () => {
-    containers.forEach(c => deleteContainer(c.id));
+  const handleDeleteAll = async () => {
+    setDeletingAll(true);
+    let failed = 0;
+    try {
+      for (const c of containers) {
+        try {
+          await deleteContainer(c.id);
+        } catch {
+          failed++;
+        }
+      }
+      if (failed > 0) {
+        toast({
+          variant: 'destructive',
+          title: 'Erro ao deletar',
+          description: `${failed} container(es) não puderam ser removidos.`,
+        });
+      } else {
+        toast({ title: 'Containers removidos', description: 'Todos os containers foram deletados.' });
+      }
+    } catch (e) {
+      toast({
+        variant: 'destructive',
+        title: 'Erro ao deletar',
+        description: e instanceof Error ? e.message : 'Erro ao remover containers.',
+      });
+    } finally {
+      setDeletingAll(false);
+    }
+  };
+
+  const handleDeleteOne = async (id: number) => {
+    setDeletingId(id);
+    try {
+      await deleteContainer(id);
+      toast({ title: 'Container removido', description: 'O container foi deletado.' });
+    } catch (e) {
+      toast({
+        variant: 'destructive',
+        title: 'Erro ao deletar',
+        description: e instanceof Error ? e.message : 'Erro ao remover o container.',
+      });
+    } finally {
+      setDeletingId(null);
+    }
   };
 
   return (
@@ -160,7 +207,7 @@ const ContainerList: React.FC = () => {
         <div className="flex items-center gap-3">
           <AlertDialog>
             <AlertDialogTrigger asChild>
-              <Button variant="destructive" size="sm" disabled={containers.length === 0}>
+              <Button variant="destructive" size="sm" disabled={containers.length === 0 || deletingAll}>
                 <Trash2 className="w-4 h-4 mr-2" />
                 Deletar Todos
               </Button>
@@ -363,10 +410,11 @@ const ContainerList: React.FC = () => {
                             Editar
                           </DropdownMenuItem>
                           <DropdownMenuItem
-                            onClick={(e) => {
+                            onClick={async (e) => {
                               e.stopPropagation();
-                              deleteContainer(container.id);
+                              await handleDeleteOne(container.id);
                             }}
+                            disabled={deletingId === container.id}
                             className="text-destructive focus:text-destructive"
                           >
                             <Trash2 className="w-4 h-4 mr-2" />

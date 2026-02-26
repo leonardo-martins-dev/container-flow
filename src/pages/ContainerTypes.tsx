@@ -35,6 +35,8 @@ const ContainerTypes: React.FC = () => {
     description: '',
     dimensions: '',
   });
+  const [saving, setSaving] = useState(false);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
 
   const handleOpenModal = (type?: ContainerType) => {
     if (type) {
@@ -55,26 +57,38 @@ const ContainerTypes: React.FC = () => {
     setShowModal(true);
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!formData.name.trim()) {
       toast({ title: 'Nome é obrigatório', variant: 'destructive' });
       return;
     }
-
-    if (editingType) {
-      updateContainerType(editingType.id, formData);
-      toast({ title: 'Tipo atualizado' });
-    } else {
-      addContainerType(formData);
-      toast({ title: 'Tipo adicionado' });
+    setSaving(true);
+    try {
+      if (editingType) {
+        await updateContainerType(editingType.id, formData);
+        toast({ title: 'Tipo atualizado' });
+      } else {
+        await addContainerType(formData);
+        toast({ title: 'Tipo adicionado' });
+      }
+      setShowModal(false);
+    } catch (e) {
+      toast({ title: e instanceof Error ? e.message : 'Erro ao salvar', variant: 'destructive' });
+    } finally {
+      setSaving(false);
     }
-
-    setShowModal(false);
   };
 
-  const handleDelete = (id: number) => {
-    deleteContainerType(id);
-    toast({ title: 'Tipo removido' });
+  const handleDelete = async (id: number) => {
+    setDeletingId(id);
+    try {
+      await deleteContainerType(id);
+      toast({ title: 'Tipo removido' });
+    } catch (e) {
+      toast({ title: e instanceof Error ? e.message : 'Erro ao remover', variant: 'destructive' });
+    } finally {
+      setDeletingId(null);
+    }
   };
 
   return (
@@ -122,6 +136,7 @@ const ContainerTypes: React.FC = () => {
                       size="icon"
                       variant="ghost"
                       onClick={() => handleOpenModal(type)}
+                      disabled={deletingId === type.id}
                     >
                       <Edit2 className="w-4 h-4" />
                     </Button>
@@ -130,8 +145,9 @@ const ContainerTypes: React.FC = () => {
                       variant="ghost"
                       onClick={() => handleDelete(type.id)}
                       className="text-destructive hover:text-destructive"
+                      disabled={deletingId === type.id}
                     >
-                      <Trash2 className="w-4 h-4" />
+                      {deletingId === type.id ? <span className="text-xs">...</span> : <Trash2 className="w-4 h-4" />}
                     </Button>
                   </div>
                 </div>
@@ -197,11 +213,11 @@ const ContainerTypes: React.FC = () => {
           </div>
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowModal(false)}>
+            <Button variant="outline" onClick={() => setShowModal(false)} disabled={saving}>
               Cancelar
             </Button>
-            <Button onClick={handleSave} className="gradient-primary text-primary-foreground">
-              {editingType ? 'Atualizar' : 'Adicionar'}
+            <Button onClick={handleSave} className="gradient-primary text-primary-foreground" disabled={saving}>
+              {saving ? 'Salvando...' : editingType ? 'Atualizar' : 'Adicionar'}
             </Button>
           </DialogFooter>
         </DialogContent>
