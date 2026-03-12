@@ -1,36 +1,52 @@
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Container as ContainerIcon, AlertTriangle, TrendingUp, Layers } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
-import { useContainerContext } from '@/contexts/ContainerContext';
-import { calculateProgress, getDeadlineStatus } from '@/lib/utils';
+import { getDashboardTVData, type DashboardTVData } from '@/lib/api';
+
+const defaultData: DashboardTVData = {
+  avgProgress: 0,
+  inProgress: 0,
+  overdue: 0,
+  bottlenecks: [],
+  containersInProgress: [],
+  totalContainers: 0,
+  totalProcesses: 0,
+};
 
 const DashboardTV: React.FC = () => {
-  const { containers, processes } = useContainerContext();
+  const [data, setData] = useState<DashboardTVData>(defaultData);
+  const [loading, setLoading] = useState(true);
   const [, setTick] = useState(0);
+
+  const load = () => {
+    getDashboardTVData()
+      .then(setData)
+      .catch(() => setData(defaultData))
+      .finally(() => setLoading(false));
+  };
+
   useEffect(() => {
-    const interval = setInterval(() => setTick((t) => t + 1), 5000);
+    load();
+  }, []);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setTick((t) => t + 1);
+      load();
+    }, 5000);
     return () => clearInterval(interval);
   }, []);
 
-  const avgProgress = containers.length > 0
-    ? Math.round(containers.reduce((acc, c) => acc + calculateProgress(c.processStages), 0) / containers.length)
-    : 0;
-  const inProgress = containers.filter((c) => c.currentStatus === 'in_progress').length;
-  const overdue = containers.filter((c) => getDeadlineStatus(c.deliveryDeadline) === 'overdue').length;
-  const bottlenecks = useMemo(() => {
-    const list: string[] = [];
-    if (overdue > 0) list.push(`${overdue} container(s) atrasado(s)`);
-    const byProcess: Record<number, number> = {};
-    containers.forEach((c) => {
-      c.processStages.filter((s) => s.status === 'in_progress').forEach((s) => {
-        byProcess[s.processId] = (byProcess[s.processId] || 0) + 1;
-      });
-    });
-    const maxLoad = Math.max(0, ...Object.values(byProcess));
-    if (maxLoad > 2) list.push('Processos com fila (sobrecarga)');
-    return list;
-  }, [containers, overdue]);
+  if (loading && data === defaultData) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <p className="text-muted-foreground text-xl">Carregando...</p>
+      </div>
+    );
+  }
+
+  const { avgProgress, inProgress, bottlenecks, containersInProgress, totalContainers, totalProcesses } = data;
 
   return (
     <div className="min-h-screen bg-background p-8 text-2xl md:text-3xl">
@@ -57,8 +73,8 @@ const DashboardTV: React.FC = () => {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-3xl">{containers.length} containers</p>
-            <p className="text-xl text-muted-foreground">{processes.length} processos</p>
+            <p className="text-3xl">{totalContainers} containers</p>
+            <p className="text-xl text-muted-foreground">{totalProcesses} processos</p>
           </CardContent>
         </Card>
         <Card className="glass">
@@ -90,12 +106,12 @@ const DashboardTV: React.FC = () => {
         </CardHeader>
         <CardContent>
           <div className="flex flex-wrap gap-4">
-            {containers.filter((c) => c.currentStatus === 'in_progress').slice(0, 12).map((c) => (
+            {containersInProgress.map((c) => (
               <div key={c.id} className="px-4 py-2 rounded-lg bg-accent/20 text-lg font-medium">
-                {c.number} — {calculateProgress(c.processStages)}%
+                {c.number} — {c.progress}%
               </div>
             ))}
-            {containers.filter((c) => c.currentStatus === 'in_progress').length === 0 && (
+            {containersInProgress.length === 0 && (
               <p className="text-muted-foreground text-xl">Nenhum container em produção no momento.</p>
             )}
           </div>

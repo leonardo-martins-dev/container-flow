@@ -439,3 +439,19 @@ export async function getPrevisaoComercial(): Promise<Array<{ containerId: numbe
   const data = await res.json();
   return Array.isArray(data) ? data : [];
 }
+
+export interface DashboardTVData {
+  avgProgress: number;
+  inProgress: number;
+  overdue: number;
+  bottlenecks: string[];
+  containersInProgress: Array<{ id: number; number: string; progress: number }>;
+  totalContainers: number;
+  totalProcesses: number;
+}
+
+export async function getDashboardTVData(): Promise<DashboardTVData> {
+  const res = await fetch(`${API_BASE}/api/public/dashboard-tv`);
+  if (!res.ok) throw new Error('Falha ao carregar dados do dashboard TV');
+  return res.json();
+}

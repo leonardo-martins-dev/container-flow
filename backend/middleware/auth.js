@@ -3,8 +3,10 @@ const jwt = require('jsonwebtoken');
 const JWT_SECRET = process.env.JWT_SECRET || (process.env.NODE_ENV !== 'production' ? 'container-flow-secret-change-in-production' : null);
 
 function isPublicPath(req) {
-  if (req.path === '/health' && req.method === 'GET') return true;
-  if (req.path === '/auth/login' && req.method === 'POST') return true;
+  const p = req.path || req.originalUrl?.split('?')[0] || '';
+  if ((p === '/api/health' || p === '/health') && req.method === 'GET') return true;
+  if ((p === '/api/auth/login' || p === '/auth/login') && req.method === 'POST') return true;
+  if (p.startsWith('/api/public')) return true;
   return false;
 }
 

@@ -14,6 +14,7 @@ const containersRouter = require('./routes/containers');
 const factoryLayoutRouter = require('./routes/factoryLayout');
 const authRouter = require('./routes/auth');
 const logisticsRouter = require('./routes/logistics');
+const publicRouter = require('./routes/public');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -34,6 +35,7 @@ app.use('/api/containers', containersRouter);
 app.use('/api/factory-layout', factoryLayoutRouter);
 app.use('/api/auth', authRouter);
 app.use('/api/logistics', logisticsRouter);
+app.use('/api/public', publicRouter);
 
 app.get('/api/health', (req, res) => {
   res.json({ ok: true });

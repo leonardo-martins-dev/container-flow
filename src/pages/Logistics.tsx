@@ -89,10 +89,13 @@ const Logistics: React.FC = () => {
               <div className="grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
                 <div className="space-y-1">
                   <Label>Container</Label>
-                  <Select value={newContainerId || undefined} onValueChange={(v) => setNewContainerId(v ?? '')}>
+                  <Select
+                    value={newContainerId === '' ? '__empty__' : newContainerId}
+                    onValueChange={(v) => setNewContainerId(v === '__empty__' ? '' : v)}
+                  >
                     <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">Selecione</SelectItem>
+                      <SelectItem value="__empty__">Selecione</SelectItem>
                       {containers.map((c) => (
                         <SelectItem key={c.id} value={String(c.id)}>{c.number}</SelectItem>
                       ))}
