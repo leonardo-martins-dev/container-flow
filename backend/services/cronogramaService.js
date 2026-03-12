@@ -65,4 +65,36 @@ async function gerar() {
   return result;
 }
 
-module.exports = { getMacro, getDiario, gerar };
+async function getPrevisaoComercial() {
+  try {
+    const macro = await getMacro();
+    const assignments = macro.assignments || [];
+    const byContainer = {};
+    assignments.forEach((a) => {
+      const cid = a.containerId || a.propostaId;
+      if (!cid) return;
+      if (!byContainer[cid]) byContainer[cid] = { containerId: cid, numero: String(cid), inicioPrevisto: '', fimPrevisto: '', entregaPrevista: '' };
+      const inc = a.inicioPrevisto ? new Date(a.inicioPrevisto).toISOString().slice(0, 10) : '';
+      const fim = a.fimPrevisto ? new Date(a.fimPrevisto).toISOString().slice(0, 10) : '';
+      if (inc && (!byContainer[cid].inicioPrevisto || inc < byContainer[cid].inicioPrevisto)) byContainer[cid].inicioPrevisto = inc;
+      if (fim && (!byContainer[cid].fimPrevisto || fim > byContainer[cid].fimPrevisto)) byContainer[cid].fimPrevisto = fim;
+    });
+    const list = Object.values(byContainer);
+    list.forEach((p) => { p.entregaPrevista = p.fimPrevisto || p.inicioPrevisto || '-'; });
+    const containerIds = list.map((p) => p.containerId);
+    if (containerIds.length > 0) {
+      const res = await query(
+        `SELECT id, numero FROM container_flow.containers WHERE id IN (${containerIds.join(',')})`
+      ).catch(() => ({ recordset: [] }));
+      const numBy = {};
+      (res.recordset || []).forEach((r) => { numBy[r.id] = r.numero; });
+      list.forEach((p) => { if (numBy[p.containerId]) p.numero = numBy[p.containerId]; });
+    }
+    return list;
+  } catch (err) {
+    console.error('getPrevisaoComercial:', err);
+    return [];
+  }
+}
+
+module.exports = { getMacro, getDiario, gerar, getPrevisaoComercial };

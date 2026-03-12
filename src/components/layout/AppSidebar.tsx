@@ -14,12 +14,18 @@ import {
   PinOff,
   ChevronLeft,
   ChevronRight,
+  Truck,
+  Car,
+  TrendingUp,
+  LogOut,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { useAuth } from '@/contexts/AuthContext';
+import { canAccessRoute } from '@/lib/roles';
 
-const navItems = [
+const allNavItems = [
   { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
   { to: '/containers', icon: Container, label: 'Containers' },
   { to: '/gantt', icon: GanttChart, label: 'Cronograma' },
@@ -27,6 +33,9 @@ const navItems = [
   { to: '/processes', icon: Layers, label: 'Processos' },
   { to: '/workers', icon: Users, label: 'Trabalhadores' },
   { to: '/container-types', icon: Boxes, label: 'Tipos de Containers' },
+  { to: '/logistics', icon: Truck, label: 'Logística' },
+  { to: '/motorista', icon: Car, label: 'Terminal Motorista' },
+  { to: '/comercial', icon: TrendingUp, label: 'Previsão Comercial' },
   { to: '/settings', icon: Settings, label: 'Configurações' },
 ];
 
@@ -37,6 +46,8 @@ interface AppSidebarProps {
 
 export const AppSidebar: React.FC<AppSidebarProps> = ({ isCollapsed, setIsCollapsed }) => {
   const location = useLocation();
+  const { role, logout } = useAuth();
+  const navItems = role ? allNavItems.filter((item) => canAccessRoute(role, item.to)) : allNavItems;
   const [isPinned, setIsPinned] = useState(() => {
     const saved = localStorage.getItem('sidebarPinned');
     return saved ? JSON.parse(saved) : true;
@@ -98,7 +109,7 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ isCollapsed, setIsCollap
               <div className="w-9 h-9 rounded-lg gradient-primary flex items-center justify-center">
                 <Container className="w-5 h-5 text-primary-foreground" />
               </div>
-              <span className="font-bold text-lg text-gradient-primary">ContainerPro</span>
+              <span className="font-bold text-lg text-gradient-primary">T.A.M. Miranda</span>
             </motion.div>
           ) : (
             <motion.div
@@ -166,7 +177,18 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({ isCollapsed, setIsCollap
       </nav>
 
       {/* Footer Controls */}
-      <div className="p-3 border-t border-border/50">
+      <div className="p-3 border-t border-border/50 space-y-2">
+        {showFull && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={logout}
+            className="w-full justify-start text-muted-foreground hover:text-foreground"
+          >
+            <LogOut className="w-4 h-4 mr-2" />
+            Sair
+          </Button>
+        )}
         <div className={cn('flex', showFull ? 'justify-between' : 'justify-center')}>
           {showFull && (
             <Button

@@ -40,4 +40,14 @@ router.post('/gerar', async (req, res) => {
   }
 });
 
+router.get('/previsao-comercial', async (req, res) => {
+  try {
+    const data = await cronogramaService.getPrevisaoComercial();
+    res.json(data);
+  } catch (err) {
+    console.error('GET /api/cronograma/previsao-comercial', err);
+    res.json([]);
+  }
+});
+
 module.exports = router;

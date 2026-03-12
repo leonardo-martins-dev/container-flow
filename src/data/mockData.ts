@@ -22,6 +22,9 @@ export interface Worker {
   level: 'junior' | 'senior';
   specialtyProcessIds: number[];
   avatar?: string;
+  status?: string;
+  coringa?: boolean;
+  atrasoMinutos?: number | null;
 }
 
 export interface SequencingRule {

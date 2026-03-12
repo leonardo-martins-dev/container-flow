@@ -1,6 +1,7 @@
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
+const authMiddleware = require('./middleware/auth');
 
 const propostasRouter = require('./routes/propostas');
 const patrimoniosRouter = require('./routes/patrimonios');
@@ -11,12 +12,16 @@ const workersRouter = require('./routes/workers');
 const containerTypesRouter = require('./routes/containerTypes');
 const containersRouter = require('./routes/containers');
 const factoryLayoutRouter = require('./routes/factoryLayout');
+const authRouter = require('./routes/auth');
+const logisticsRouter = require('./routes/logistics');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
 
 app.use(cors({ origin: true }));
 app.use(express.json());
+
+app.use('/api', authMiddleware);
 
 app.use('/api/propostas', propostasRouter);
 app.use('/api/patrimonios', patrimoniosRouter);
@@ -27,6 +32,8 @@ app.use('/api/workers', workersRouter);
 app.use('/api/container-types', containerTypesRouter);
 app.use('/api/containers', containersRouter);
 app.use('/api/factory-layout', factoryLayoutRouter);
+app.use('/api/auth', authRouter);
+app.use('/api/logistics', logisticsRouter);
 
 app.get('/api/health', (req, res) => {
   res.json({ ok: true });

@@ -38,7 +38,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { useContainerContext } from '@/contexts/ContainerContext';
 import { formatTime, cn } from '@/lib/utils';
 import { toast } from '@/hooks/use-toast';
-import { getRegrasValidar, putRegras } from '@/lib/api';
+import { getRegrasValidar, putRegras, getProcessDelays, putProcessDelay } from '@/lib/api';
 import type { SequencingRule } from '@/data/mockData';
 
 const ProcessesList: React.FC = () => {
@@ -56,6 +56,15 @@ const ProcessesList: React.FC = () => {
   const [validando, setValidando] = useState(false);
   const [validacaoResult, setValidacaoResult] = useState<{ ok: boolean; erros: string[] } | null>(null);
   const [regrasLoaded, setRegrasLoaded] = useState(false);
+  const [delayByProcessId, setDelayByProcessId] = useState<Record<number, number>>({});
+
+  useEffect(() => {
+    getProcessDelays().then((list) => {
+      const map: Record<number, number> = {};
+      list.forEach((d) => { map[d.processId] = d.delayMinutos; });
+      setDelayByProcessId(map);
+    }).catch(() => {});
+  }, [processes.length]);
 
   useEffect(() => {
     loadRegrasFromApi().then(() => setRegrasLoaded(true)).catch(() => {
@@ -128,6 +137,16 @@ const ProcessesList: React.FC = () => {
     const processWorkers = getWorkersForProcess(process.id);
     setSelectedProcessWorkers({ process, workers: processWorkers });
     setShowWorkersModal(true);
+  };
+
+  const handleDelayBlur = async (processId: number, value: string) => {
+    const min = Math.max(0, parseInt(value, 10) || 0);
+    setDelayByProcessId((prev) => ({ ...prev, [processId]: min }));
+    try {
+      await putProcessDelay(processId, min);
+    } catch {
+      toast({ title: 'Erro ao salvar tempo de preparação', variant: 'destructive' });
+    }
   };
 
   const getRule = (processId: number) => {
@@ -249,6 +268,7 @@ const ProcessesList: React.FC = () => {
                   <TableRow className="border-border/50">
                     <TableHead>Nome</TableHead>
                     <TableHead>Tempo Médio</TableHead>
+                    <TableHead>Tempo de Preparação (min)</TableHead>
                     <TableHead>Trabalhadores</TableHead>
                     <TableHead className="text-right">Ações</TableHead>
                   </TableRow>
@@ -293,6 +313,17 @@ const ProcessesList: React.FC = () => {
                                 <span>{formatTime(process.averageTimeMinutes)}</span>
                               </div>
                             )}
+                          </TableCell>
+                          <TableCell>
+                            <Input
+                              type="number"
+                              min={0}
+                              className="w-20 h-8 industrial-input"
+                              value={delayByProcessId[process.id] ?? ''}
+                              onChange={(e) => setDelayByProcessId((prev) => ({ ...prev, [process.id]: parseInt(e.target.value, 10) || 0 }))}
+                              onBlur={(e) => handleDelayBlur(process.id, e.target.value)}
+                              placeholder="0"
+                            />
                           </TableCell>
                           <TableCell>
                             <div 

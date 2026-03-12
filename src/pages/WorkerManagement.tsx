@@ -8,6 +8,8 @@ import {
   Crown,
   Briefcase,
   Filter,
+  Clock,
+  UserX,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -46,9 +48,12 @@ const WorkerManagement: React.FC = () => {
     name: '',
     level: 'junior' as 'junior' | 'senior',
     specialtyProcessIds: [] as number[],
+    coringa: false,
   });
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [atrasoModal, setAtrasoModal] = useState<Worker | null>(null);
+  const [atrasoMinutos, setAtrasoMinutos] = useState('15');
 
   const filteredWorkers = filterProcess === 'all'
     ? workers
@@ -61,6 +66,7 @@ const WorkerManagement: React.FC = () => {
         name: worker.name,
         level: worker.level,
         specialtyProcessIds: [...worker.specialtyProcessIds],
+        coringa: !!worker.coringa,
       });
     } else {
       setEditingWorker(null);
@@ -68,6 +74,7 @@ const WorkerManagement: React.FC = () => {
         name: '',
         level: 'junior',
         specialtyProcessIds: [],
+        coringa: false,
       });
     }
     setShowModal(true);
@@ -81,10 +88,10 @@ const WorkerManagement: React.FC = () => {
     setSaving(true);
     try {
       if (editingWorker) {
-        await updateWorker(editingWorker.id, formData);
+        await updateWorker(editingWorker.id, { name: formData.name, level: formData.level, specialtyProcessIds: formData.specialtyProcessIds, coringa: formData.coringa });
         toast({ title: 'Trabalhador atualizado' });
       } else {
-        await addWorker(formData);
+        await addWorker({ name: formData.name, level: formData.level, specialtyProcessIds: formData.specialtyProcessIds, coringa: formData.coringa });
         toast({ title: 'Trabalhador adicionado' });
       }
       setShowModal(false);
@@ -113,6 +120,27 @@ const WorkerManagement: React.FC = () => {
       toast({ title: e instanceof Error ? e.message : 'Erro ao remover', variant: 'destructive' });
     } finally {
       setDeletingId(null);
+    }
+  };
+
+  const handleMarcarFalta = async (worker: Worker) => {
+    try {
+      await updateWorker(worker.id, { ...worker, status: 'ausente' });
+      toast({ title: `${worker.name} marcado como ausente` });
+    } catch (e) {
+      toast({ title: e instanceof Error ? e.message : 'Erro ao atualizar', variant: 'destructive' });
+    }
+  };
+
+  const handleMarcarAtraso = async () => {
+    if (!atrasoModal) return;
+    const min = Math.max(0, parseInt(atrasoMinutos, 10) || 0);
+    try {
+      await updateWorker(atrasoModal.id, { ...atrasoModal, status: 'atrasado', atrasoMinutos: min });
+      toast({ title: `Atraso de ${min} min registrado para ${atrasoModal.name}` });
+      setAtrasoModal(null);
+    } catch (e) {
+      toast({ title: e instanceof Error ? e.message : 'Erro ao atualizar', variant: 'destructive' });
     }
   };
 
@@ -195,7 +223,36 @@ const WorkerManagement: React.FC = () => {
                           )}
                           {worker.level === 'senior' ? 'Sênior' : 'Júnior'}
                         </Badge>
+                        {(worker.status && worker.status !== 'presente') && (
+                          <Badge variant="secondary" className="mt-1 ml-1">
+                            {worker.status === 'ausente' ? 'Ausente' : worker.status === 'atrasado' ? `Atraso ${worker.atrasoMinutos ?? 0} min` : worker.status}
+                          </Badge>
+                        )}
+                        {worker.coringa && (
+                          <Badge variant="outline" className="mt-1 ml-1 border-primary text-primary">Coringa</Badge>
+                        )}
                       </div>
+                    </div>
+                    <div className="flex flex-wrap gap-1">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="text-xs"
+                        onClick={() => handleMarcarFalta(worker)}
+                        disabled={worker.status === 'ausente'}
+                      >
+                        <UserX className="w-3 h-3 mr-1" />
+                        Falta
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="text-xs"
+                        onClick={() => setAtrasoModal(worker)}
+                      >
+                        <Clock className="w-3 h-3 mr-1" />
+                        Atraso
+                      </Button>
                     </div>
                     <div className="flex gap-1">
                       <Button
@@ -280,6 +337,16 @@ const WorkerManagement: React.FC = () => {
               />
             </div>
 
+            {/* Coringa */}
+            <div className="flex items-center space-x-2">
+              <Checkbox
+                id="coringa"
+                checked={formData.coringa}
+                onCheckedChange={(c) => setFormData({ ...formData, coringa: !!c })}
+              />
+              <Label htmlFor="coringa" className="cursor-pointer">Coringa (múltiplas competências / substituição)</Label>
+            </div>
+
             {/* Level */}
             <div className="space-y-2">
               <Label>Nível</Label>
@@ -343,6 +410,34 @@ const WorkerManagement: React.FC = () => {
             <Button onClick={handleSave} className="gradient-primary text-primary-foreground" disabled={saving}>
               {saving ? 'Salvando...' : editingWorker ? 'Atualizar' : 'Adicionar'}
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Atraso modal */}
+      <Dialog open={!!atrasoModal} onOpenChange={(open) => !open && setAtrasoModal(null)}>
+        <DialogContent className="glass max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Marcar Atraso</DialogTitle>
+            <DialogDescription>
+              {atrasoModal && `Informe os minutos de atraso para ${atrasoModal.name}`}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="atrasoMin">Minutos</Label>
+              <Input
+                id="atrasoMin"
+                type="number"
+                min={1}
+                value={atrasoMinutos}
+                onChange={(e) => setAtrasoMinutos(e.target.value)}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAtrasoModal(null)}>Cancelar</Button>
+            <Button onClick={handleMarcarAtraso} className="gradient-primary text-primary-foreground">Confirmar</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

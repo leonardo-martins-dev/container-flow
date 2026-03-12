@@ -116,4 +116,40 @@ router.delete('/:id', async (req, res) => {
   }
 });
 
+router.get('/delays', async (req, res) => {
+  try {
+    const result = await query(
+      `SELECT process_id AS processId, delay_minutos AS delayMinutos FROM container_flow.processos_delay`
+    );
+    res.json(result.recordset || []);
+  } catch (err) {
+    console.error('GET /api/processos/delays', err);
+    res.json([]);
+  }
+});
+
+router.put('/delays', async (req, res) => {
+  try {
+    const body = req.body || {};
+    const processId = parseInt(body.processId, 10);
+    const delayMinutos = Math.max(0, parseInt(body.delayMinutos, 10) || 0);
+    if (Number.isNaN(processId)) return res.status(400).json({ error: 'processId inválido' });
+
+    const up = await query(
+      `UPDATE container_flow.processos_delay SET delay_minutos = @delayMinutos WHERE process_id = @processId`,
+      { processId, delayMinutos }
+    );
+    if (up.rowsAffected?.[0] === 0) {
+      await query(
+        `INSERT INTO container_flow.processos_delay (process_id, delay_minutos) VALUES (@processId, @delayMinutos)`,
+        { processId, delayMinutos }
+      );
+    }
+    res.json({ processId, delayMinutos });
+  } catch (err) {
+    console.error('PUT /api/processos/delays', err);
+    res.status(500).json({ error: err.message || 'Erro ao salvar delay' });
+  }
+});
+
 module.exports = router;
