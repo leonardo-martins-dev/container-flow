@@ -425,6 +425,76 @@ export async function getMe(token: string): Promise<AuthUser> {
   return res.json();
 }
 
+export interface UserRow {
+  id: number;
+  nome: string;
+  email: string;
+  role: string;
+  ativo: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export async function getUsers(): Promise<UserRow[]> {
+  const res = await fetch(`${API_BASE}/api/users`, { headers: getAuthHeaders() });
+  if (!res.ok) throw new Error(await res.text().catch(() => res.statusText));
+  return res.json();
+}
+
+export async function createUser(payload: { nome: string; email: string; senha: string; role: string; ativo?: boolean }): Promise<UserRow> {
+  const res = await fetch(`${API_BASE}/api/users`, {
+    method: 'POST',
+    headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => res.statusText);
+    try {
+      const json = JSON.parse(text);
+      throw new Error(json?.error || text);
+    } catch {
+      throw new Error(text);
+    }
+  }
+  return res.json();
+}
+
+export async function updateUser(id: number, updates: Partial<Pick<UserRow, 'nome' | 'email' | 'role' | 'ativo'>>): Promise<UserRow> {
+  const res = await fetch(`${API_BASE}/api/users/${id}`, {
+    method: 'PUT',
+    headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify(updates),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => res.statusText);
+    try {
+      const json = JSON.parse(text);
+      throw new Error(json?.error || text);
+    } catch {
+      throw new Error(text);
+    }
+  }
+  return res.json();
+}
+
+export async function updateUserPassword(id: number, senha: string): Promise<UserRow> {
+  const res = await fetch(`${API_BASE}/api/users/${id}/password`, {
+    method: 'PATCH',
+    headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ senha }),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => res.statusText);
+    try {
+      const json = JSON.parse(text);
+      throw new Error(json?.error || text);
+    } catch {
+      throw new Error(text);
+    }
+  }
+  return res.json();
+}
+
 export interface SolicitacaoLogistica {
   id: number;
   containerId: number;

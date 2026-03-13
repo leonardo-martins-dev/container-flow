@@ -15,6 +15,7 @@ import FactoryLayout from "./pages/FactoryLayout";
 import ProcessesList from "./pages/ProcessesList";
 import WorkerManagement from "./pages/WorkerManagement";
 import ContainerTypes from "./pages/ContainerTypes";
+import UserManagement from "./pages/UserManagement";
 import Settings from "./pages/Settings";
 import Login from "./pages/Login";
 import NotFound from "./pages/NotFound";
@@ -45,6 +46,7 @@ const App = () => (
                 <Route path="layout" element={<FactoryLayout />} />
                 <Route path="processes" element={<ProcessesList />} />
                 <Route path="workers" element={<WorkerManagement />} />
+                <Route path="users" element={<UserManagement />} />
                 <Route path="container-types" element={<ContainerTypes />} />
                 <Route path="logistics" element={<Logistics />} />
                 <Route path="motorista" element={<MotoristaTerminal />} />
