@@ -1,5 +1,5 @@
-import React, { useState, useCallback, useMemo } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import React, { useState, useCallback, useMemo, useRef, useLayoutEffect } from 'react';
+import { motion, AnimatePresence, useMotionValue } from 'framer-motion';
 import { Plus, Trash2, Grid3X3, RotateCcw, Move } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -60,52 +60,57 @@ export const FactoryGrid: React.FC<FactoryGridProps> = ({
   // Use external dragged container if available, otherwise use internal
   const draggedContainer = externalDraggedContainer ?? internalDraggedContainer;
 
-  // Generate grid positions based on config
-  const gridPositions = useMemo(() => {
-    const positions: Array<{ x: number; y: number; id: string }> = [];
-    const topMargin = 32; // Space for labels
-    const extraVerticalGap = 16; // Extra space between rows for labels
-    
+  // Merge existing slots with default positions (only when x/y ainda não definidos)
+  const gridSlots = useMemo(() => {
+    if (slots.length > 0) {
+      return slots.map((slot, index) => {
+        const hasPosition = slot.x !== undefined && slot.y !== undefined;
+        if (hasPosition) {
+          return {
+            ...slot,
+            width: slot.width ?? config.cellWidth,
+            height: slot.height ?? config.cellHeight,
+          };
+        }
+        const col = index % config.columns;
+        const row = Math.floor(index / config.columns);
+        const topMargin = 32;
+        const extraVerticalGap = 16;
+        const x = col * (config.cellWidth + config.gap);
+        const y = topMargin + row * (config.cellHeight + config.gap + extraVerticalGap);
+        return {
+          ...slot,
+          x,
+          y,
+          width: config.cellWidth,
+          height: config.cellHeight,
+        };
+      });
+    }
+
+    const initialSlots: FactorySlot[] = [];
+    const topMargin = 32;
+    const extraVerticalGap = 16;
+    let index = 0;
     for (let row = 0; row < config.rows; row++) {
       for (let col = 0; col < config.columns; col++) {
         const x = col * (config.cellWidth + config.gap);
         const y = topMargin + row * (config.cellHeight + config.gap + extraVerticalGap);
         const id = `${floorId}-${row}-${col}`;
-        positions.push({ x, y, id });
-      }
-    }
-    
-    return positions;
-  }, [config, floorId]);
-
-  // Merge existing slots with grid positions
-  const gridSlots = useMemo(() => {
-    const existingSlotMap = new Map(slots.map(slot => [slot.id, slot]));
-    
-    return gridPositions.map((pos, index) => {
-      const existingSlot = existingSlotMap.get(pos.id);
-      
-      if (existingSlot) {
-        return {
-          ...existingSlot,
-          x: pos.x,
-          y: pos.y,
+        initialSlots.push({
+          id,
+          name: `${floorId === 1 ? 'V' : 'A'}-${String(index + 1).padStart(2, '0')}`,
+          x,
+          y,
           width: config.cellWidth,
           height: config.cellHeight,
-        };
+          containerId: null,
+        } as FactorySlot);
+        index++;
       }
-      
-      return {
-        id: pos.id,
-        name: `${floorId === 1 ? 'V' : 'A'}-${String(index + 1).padStart(2, '0')}`,
-        x: pos.x,
-        y: pos.y,
-        width: config.cellWidth,
-        height: config.cellHeight,
-        containerId: null,
-      } as FactorySlot;
-    });
-  }, [gridPositions, slots, config, floorId]);
+    }
+    return initialSlots;
+  }, [slots, config, floorId]);
 
   // Update slots when grid changes
   React.useEffect(() => {
@@ -183,8 +188,17 @@ export const FactoryGrid: React.FC<FactoryGridProps> = ({
     return containers.find(c => c.id === id);
   }, [containers]);
 
-  const gridWidth = config.columns * config.cellWidth + (config.columns - 1) * config.gap;
-  const gridHeight = config.rows * config.cellHeight + (config.rows - 1) * config.gap + 100; // More space for labels
+  const gridWidth = Math.max(
+    config.columns * config.cellWidth + (config.columns - 1) * config.gap,
+    ...gridSlots.map((s) => (s.x || 0) + (s.width || config.cellWidth) + config.gap)
+  );
+  const gridHeight =
+    Math.max(
+      config.rows * config.cellHeight + (config.rows - 1) * config.gap + 100,
+      ...gridSlots.map((s) => (s.y || 0) + (s.height || config.cellHeight) + 100)
+    );
+
+  const gridRef = useRef<HTMLDivElement | null>(null);
 
   return (
     <div className={cn('space-y-4', className)}>
@@ -250,6 +264,7 @@ export const FactoryGrid: React.FC<FactoryGridProps> = ({
       <div className="w-full">
         <div
           className="relative w-full"
+          ref={gridRef}
           style={{
             minHeight: gridHeight,
             width: '100%'
@@ -261,48 +276,28 @@ export const FactoryGrid: React.FC<FactoryGridProps> = ({
               const isDropTarget = dragOverSlot === slot.id && !slot.containerId && draggedContainer !== null;
               
               return (
-                <motion.div
+                <DraggableSlot
                   key={slot.id}
-                  layout
-                  initial={{ opacity: 0, scale: 0.8 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.8 }}
-                  className={cn(
-                    'absolute rounded-lg border-2 transition-all duration-200',
-                    container
-                      ? 'border-primary bg-primary/5 shadow-sm'
-                      : 'border-dashed border-muted-foreground/30 bg-muted/10',
-                    isDropTarget && 'border-accent bg-accent/20 scale-105 shadow-lg',
-                    editMode && 'hover:border-primary/50'
-                  )}
-                  style={{
-                    left: slot.x,
-                    top: slot.y,
-                    width: slot.width,
-                    height: slot.height,
+                  slot={slot}
+                  editMode={editMode}
+                  gridHeight={gridHeight}
+                  gridRef={gridRef}
+                  isDropTarget={isDropTarget}
+                  hasContainer={!!container}
+                  onPositionChange={(slotId, newX, newY) => {
+                    const nextSlots = slots.map((s) =>
+                      s.id === slotId ? { ...s, x: newX, y: newY } : s
+                    );
+                    onSlotsChange(nextSlots);
                   }}
-                  onDragOver={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    handleSlotDragOver(e, slot.id);
-                  }}
-                  onDragLeave={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    handleSlotDragLeave();
-                  }}
-                  onDrop={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    handleSlotDrop(e, slot.id);
-                  }}
+                  onSlotDragOver={handleSlotDragOver}
+                  onSlotDragLeave={handleSlotDragLeave}
+                  onSlotDrop={handleSlotDrop}
                 >
-                  {/* Slot Label */}
                   <div className="absolute -top-8 left-0 text-xs font-medium text-muted-foreground bg-background px-1 rounded">
                     {slot.name}
                   </div>
 
-                  {/* Container Content */}
                   {container ? (
                     <ContainerCard
                       container={container}
@@ -329,13 +324,107 @@ export const FactoryGrid: React.FC<FactoryGridProps> = ({
                       )}
                     </div>
                   )}
-                </motion.div>
+                </DraggableSlot>
               );
             })}
           </AnimatePresence>
         </div>
       </div>
     </div>
+  );
+};
+
+interface DraggableSlotProps {
+  slot: FactorySlot & { width: number; height: number };
+  editMode: boolean;
+  gridHeight: number;
+  gridRef: React.RefObject<HTMLDivElement | null>;
+  isDropTarget: boolean;
+  hasContainer: boolean;
+  onPositionChange: (slotId: string, newX: number, newY: number) => void;
+  onSlotDragOver: (e: React.DragEvent, slotId: string) => void;
+  onSlotDragLeave: () => void;
+  onSlotDrop: (e: React.DragEvent, slotId: string) => void;
+  children: React.ReactNode;
+}
+
+const DraggableSlot: React.FC<DraggableSlotProps> = ({
+  slot,
+  editMode,
+  gridHeight,
+  gridRef,
+  isDropTarget,
+  hasContainer,
+  onPositionChange,
+  onSlotDragOver,
+  onSlotDragLeave,
+  onSlotDrop,
+  children,
+}) => {
+  const motionX = useMotionValue(0);
+  const motionY = useMotionValue(0);
+  const prevPos = useRef({ x: slot.x, y: slot.y });
+
+  useLayoutEffect(() => {
+    if (slot.x !== prevPos.current.x || slot.y !== prevPos.current.y) {
+      motionX.set(0);
+      motionY.set(0);
+      prevPos.current = { x: slot.x, y: slot.y };
+    }
+  }, [slot.x, slot.y, motionX, motionY]);
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, scale: 0.8 }}
+      animate={{ opacity: 1, scale: 1 }}
+      exit={{ opacity: 0, scale: 0.8 }}
+      className={cn(
+        'absolute rounded-lg border-2 transition-colors duration-200',
+        hasContainer
+          ? 'border-primary bg-primary/5 shadow-sm'
+          : 'border-dashed border-muted-foreground/30 bg-muted/10',
+        isDropTarget && 'border-accent bg-accent/20 scale-105 shadow-lg',
+        editMode && 'hover:border-primary/50 cursor-grab active:cursor-grabbing'
+      )}
+      style={{
+        left: slot.x,
+        top: slot.y,
+        width: slot.width,
+        height: slot.height,
+        x: motionX,
+        y: motionY,
+      }}
+      drag={editMode}
+      dragMomentum={false}
+      onDragEnd={() => {
+        if (!editMode || !gridRef.current) return;
+        const rect = gridRef.current.getBoundingClientRect();
+        let newX = (slot.x ?? 0) + motionX.get();
+        let newY = (slot.y ?? 0) + motionY.get();
+        const maxX = Math.max(0, rect.width - slot.width);
+        const maxY = Math.max(0, gridHeight - slot.height);
+        newX = Math.max(0, Math.min(newX, maxX));
+        newY = Math.max(0, Math.min(newY, maxY));
+        onPositionChange(slot.id, newX, newY);
+      }}
+      onDragOver={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        onSlotDragOver(e, slot.id);
+      }}
+      onDragLeave={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        onSlotDragLeave();
+      }}
+      onDrop={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        onSlotDrop(e, slot.id);
+      }}
+    >
+      {children}
+    </motion.div>
   );
 };
 

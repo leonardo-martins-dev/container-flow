@@ -8,12 +8,42 @@ const JWT_SECRET = process.env.JWT_SECRET || (process.env.NODE_ENV !== 'producti
 const JWT_EXPIRES = process.env.JWT_EXPIRES || '7d';
 
 async function ensureAdminExists() {
-  const res = await query(`SELECT COUNT(1) AS cnt FROM container_flow.usuarios`);
-  const cnt = res.recordset?.[0]?.cnt ?? 0;
-  if (cnt > 0) return;
+  try {
+    const res = await query(`SELECT COUNT(1) AS cnt FROM container_flow.usuarios`);
+    const cnt = res.recordset?.[0]?.cnt ?? 0;
+    if (cnt > 0) return;
+  } catch (err) {
+    const message = String(err.message || err);
+    if (message.includes("Invalid object name 'container_flow.usuarios'") || message.includes("container_flow.usuarios")) {
+      await query(`
+        IF NOT EXISTS (
+          SELECT * FROM sys.tables t
+          JOIN sys.schemas s ON t.schema_id = s.schema_id
+          WHERE s.name = 'container_flow' AND t.name = 'usuarios'
+        )
+        BEGIN
+            CREATE TABLE container_flow.usuarios (
+                id INT IDENTITY(1,1) PRIMARY KEY,
+                nome NVARCHAR(100) NOT NULL,
+                email NVARCHAR(255) NOT NULL,
+                senha_hash NVARCHAR(255) NOT NULL,
+                role NVARCHAR(30) NOT NULL DEFAULT 'lider',
+                ativo BIT NOT NULL DEFAULT 1,
+                created_at DATETIME2 DEFAULT GETUTCDATE(),
+                updated_at DATETIME2 DEFAULT GETUTCDATE()
+            );
+            CREATE UNIQUE INDEX IX_usuarios_email ON container_flow.usuarios(email);
+        END
+      `);
+    } else {
+      throw err;
+    }
+  }
   const hash = await bcrypt.hash('admin123', 10);
   await query(
-    `INSERT INTO container_flow.usuarios (nome, email, senha_hash, role, ativo) VALUES (@nome, @email, @senha_hash, 'admin', 1)`,
+    `IF NOT EXISTS (SELECT 1 FROM container_flow.usuarios WHERE email = @email)
+      INSERT INTO container_flow.usuarios (nome, email, senha_hash, role, ativo)
+      VALUES (@nome, @email, @senha_hash, 'admin', 1)`,
     { nome: 'Administrador', email: 'admin@containerflow.local', senha_hash: hash }
   );
 }

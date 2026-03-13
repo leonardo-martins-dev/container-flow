@@ -177,6 +177,8 @@ export interface WorkerRow {
   status?: string;
   coringa?: boolean;
   atrasoMinutos?: number | null;
+  presenceDate?: string;
+  logPresence?: boolean;
 }
 
 export async function getWorkers(): Promise<WorkerRow[]> {
@@ -210,6 +212,28 @@ export async function updateWorker(id: number, updates: Partial<WorkerRow>): Pro
     const err = (() => { try { return JSON.parse(text); } catch { return null; } })();
     throw new Error(err?.error ?? text);
   }
+  return res.json();
+}
+
+export interface WorkerPresence {
+  date: string;
+  status: string;
+  atrasoMinutos: number | null;
+}
+
+export interface WorkerPresenceSummary {
+  totalFaltas: number;
+  totalAtrasos: number;
+  totalMinutosAtraso: number;
+  presencas: WorkerPresence[];
+}
+
+export async function getWorkerPresences(workerId: number, month: string): Promise<WorkerPresenceSummary> {
+  const params = new URLSearchParams({ month });
+  const res = await fetch(`${API_BASE}/api/workers/${workerId}/presencas?${params.toString()}`, {
+    headers: getAuthHeaders(),
+  });
+  if (!res.ok) throw new Error(await res.text().catch(() => res.statusText));
   return res.json();
 }
 

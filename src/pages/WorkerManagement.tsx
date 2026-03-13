@@ -38,6 +38,7 @@ import { useContainerContext } from '@/contexts/ContainerContext';
 import { getWorkerColor, Worker } from '@/data/mockData';
 import { cn } from '@/lib/utils';
 import { toast } from '@/hooks/use-toast';
+import { getWorkerPresences, type WorkerPresenceSummary } from '@/lib/api';
 
 const WorkerManagement: React.FC = () => {
   const { workers, processes, addWorker, updateWorker, deleteWorker } = useContainerContext();
@@ -54,6 +55,29 @@ const WorkerManagement: React.FC = () => {
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [atrasoModal, setAtrasoModal] = useState<Worker | null>(null);
   const [atrasoMinutos, setAtrasoMinutos] = useState('15');
+  const [historyWorker, setHistoryWorker] = useState<Worker | null>(null);
+  const [historyMonth, setHistoryMonth] = useState<string>(() => {
+    const d = new Date();
+    const m = (d.getMonth() + 1).toString().padStart(2, '0');
+    return `${d.getFullYear()}-${m}`;
+  });
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyData, setHistoryData] = useState<WorkerPresenceSummary | null>(null);
+  const [globalHistoryOpen, setGlobalHistoryOpen] = useState(false);
+  const [globalHistoryMonth, setGlobalHistoryMonth] = useState<string>(() => {
+    const d = new Date();
+    const m = (d.getMonth() + 1).toString().padStart(2, '0');
+    return `${d.getFullYear()}-${m}`;
+  });
+  const [globalHistoryLoading, setGlobalHistoryLoading] = useState(false);
+  const [globalHistoryRows, setGlobalHistoryRows] = useState<
+    Array<{ workerId: number; workerName: string; date: string; status: string; atrasoMinutos: number | null }>
+  >([]);
+  const [globalTotals, setGlobalTotals] = useState<{ faltas: number; atrasos: number; minutos: number }>({
+    faltas: 0,
+    atrasos: 0,
+    minutos: 0,
+  });
 
   const filteredWorkers = filterProcess === 'all'
     ? workers
@@ -125,7 +149,12 @@ const WorkerManagement: React.FC = () => {
 
   const handleMarcarFalta = async (worker: Worker) => {
     try {
-      await updateWorker(worker.id, { ...worker, status: 'ausente' });
+      await updateWorker(worker.id, {
+        ...worker,
+        status: 'ausente',
+        logPresence: true,
+        presenceDate: new Date().toISOString().slice(0, 10),
+      });
       toast({ title: `${worker.name} marcado como ausente` });
     } catch (e) {
       toast({ title: e instanceof Error ? e.message : 'Erro ao atualizar', variant: 'destructive' });
@@ -136,11 +165,79 @@ const WorkerManagement: React.FC = () => {
     if (!atrasoModal) return;
     const min = Math.max(0, parseInt(atrasoMinutos, 10) || 0);
     try {
-      await updateWorker(atrasoModal.id, { ...atrasoModal, status: 'atrasado', atrasoMinutos: min });
+      await updateWorker(atrasoModal.id, {
+        ...atrasoModal,
+        status: 'atrasado',
+        atrasoMinutos: min,
+        logPresence: true,
+        presenceDate: new Date().toISOString().slice(0, 10),
+      });
       toast({ title: `Atraso de ${min} min registrado para ${atrasoModal.name}` });
       setAtrasoModal(null);
     } catch (e) {
       toast({ title: e instanceof Error ? e.message : 'Erro ao atualizar', variant: 'destructive' });
+    }
+  };
+
+  const loadHistory = async (worker: Worker, month: string) => {
+    try {
+      setHistoryLoading(true);
+      const data = await getWorkerPresences(worker.id, month);
+      setHistoryData(data);
+    } catch (e) {
+      setHistoryData(null);
+      toast({ title: e instanceof Error ? e.message : 'Erro ao carregar histórico', variant: 'destructive' });
+    } finally {
+      setHistoryLoading(false);
+    }
+  };
+
+  const handleOpenHistory = (worker: Worker) => {
+    const currentMonth = historyMonth || (() => {
+      const d = new Date();
+      const m = (d.getMonth() + 1).toString().padStart(2, '0');
+      return `${d.getFullYear()}-${m}`;
+    })();
+    setHistoryMonth(currentMonth);
+    setHistoryWorker(worker);
+    loadHistory(worker, currentMonth);
+  };
+
+  const loadGlobalHistory = async (month: string) => {
+    try {
+      setGlobalHistoryLoading(true);
+      const rows: Array<{ workerId: number; workerName: string; date: string; status: string; atrasoMinutos: number | null }> = [];
+      let faltas = 0;
+      let atrasos = 0;
+      let minutos = 0;
+
+      await Promise.all(
+        workers.map(async (w) => {
+          try {
+            const summary = await getWorkerPresences(w.id, month);
+            summary.presencas.forEach((p) => {
+              rows.push({
+                workerId: w.id,
+                workerName: w.name,
+                date: p.date,
+                status: p.status,
+                atrasoMinutos: p.atrasoMinutos,
+              });
+            });
+            faltas += summary.totalFaltas;
+            atrasos += summary.totalAtrasos;
+            minutos += summary.totalMinutosAtraso;
+          } catch {
+            // ignora erro de um worker individual
+          }
+        })
+      );
+
+      rows.sort((a, b) => a.date.localeCompare(b.date) || a.workerName.localeCompare(b.workerName));
+      setGlobalHistoryRows(rows);
+      setGlobalTotals({ faltas, atrasos, minutos });
+    } finally {
+      setGlobalHistoryLoading(false);
     }
   };
 
@@ -151,13 +248,28 @@ const WorkerManagement: React.FC = () => {
         <div>
           <h1 className="text-3xl font-bold text-gradient-primary">Trabalhadores</h1>
           <p className="text-muted-foreground mt-1">
-            Gerencie a equipe e suas especialidades
+            Gerencie a equipe, especialidades e presença
           </p>
         </div>
-        <Button onClick={() => handleOpenModal()} className="gradient-primary text-primary-foreground">
-          <Plus className="w-4 h-4 mr-2" />
-          Novo Trabalhador
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            onClick={() => {
+              const d = new Date();
+              const m = (d.getMonth() + 1).toString().padStart(2, '0');
+              const current = `${d.getFullYear()}-${m}`;
+              setGlobalHistoryMonth(current);
+              setGlobalHistoryOpen(true);
+              loadGlobalHistory(current);
+            }}
+          >
+            Histórico geral
+          </Button>
+          <Button onClick={() => handleOpenModal()} className="gradient-primary text-primary-foreground">
+            <Plus className="w-4 h-4 mr-2" />
+            Novo Trabalhador
+          </Button>
+        </div>
       </div>
 
       {/* Filter */}
@@ -252,6 +364,14 @@ const WorkerManagement: React.FC = () => {
                       >
                         <Clock className="w-3 h-3 mr-1" />
                         Atraso
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="text-xs"
+                        onClick={() => handleOpenHistory(worker)}
+                      >
+                        Histórico
                       </Button>
                     </div>
                     <div className="flex gap-1">
@@ -439,6 +559,164 @@ const WorkerManagement: React.FC = () => {
             <Button variant="outline" onClick={() => setAtrasoModal(null)}>Cancelar</Button>
             <Button onClick={handleMarcarAtraso} className="gradient-primary text-primary-foreground">Confirmar</Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Histórico mensal de faltas/atrasos */}
+      <Dialog open={!!historyWorker} onOpenChange={(open) => !open && setHistoryWorker(null)}>
+        <DialogContent className="glass max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Histórico de faltas e atrasos</DialogTitle>
+            <DialogDescription>
+              {historyWorker && `Trabalhador: ${historyWorker.name}`}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="flex items-center gap-4">
+              <div className="space-y-1">
+                <Label>Mês</Label>
+                <Select
+                  value={historyMonth}
+                  onValueChange={(value) => {
+                    setHistoryMonth(value);
+                    if (historyWorker) {
+                      loadHistory(historyWorker, value);
+                    }
+                  }}
+                >
+                  <SelectTrigger className="w-40 industrial-input">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {Array.from({ length: 6 }).map((_, idx) => {
+                      const d = new Date();
+                      d.setMonth(d.getMonth() - idx);
+                      const m = (d.getMonth() + 1).toString().padStart(2, '0');
+                      const val = `${d.getFullYear()}-${m}`;
+                      return (
+                        <SelectItem key={val} value={val}>
+                          {val}
+                        </SelectItem>
+                      );
+                    })}
+                  </SelectContent>
+                </Select>
+              </div>
+              {historyData && (
+                <div className="flex flex-col gap-1 text-sm">
+                  <span>Faltas no mês: <strong>{historyData.totalFaltas}</strong></span>
+                  <span>Atrasos no mês: <strong>{historyData.totalAtrasos}</strong></span>
+                  <span>Minutos de atraso: <strong>{historyData.totalMinutosAtraso}</strong></span>
+                </div>
+              )}
+            </div>
+            <div className="border border-border/50 rounded-lg max-h-80 overflow-auto">
+              {historyLoading ? (
+                <div className="p-4 text-sm text-muted-foreground">Carregando...</div>
+              ) : !historyData || historyData.presencas.length === 0 ? (
+                <div className="p-4 text-sm text-muted-foreground">
+                  Nenhum registro de falta/atraso para o período selecionado.
+                </div>
+              ) : (
+                <table className="w-full text-sm">
+                  <thead className="bg-muted/40">
+                    <tr>
+                      <th className="text-left px-3 py-2">Data</th>
+                      <th className="text-left px-3 py-2">Status</th>
+                      <th className="text-left px-3 py-2">Atraso (min)</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {historyData.presencas.map((p, idx) => (
+                      <tr key={`${p.date}-${idx}`} className="border-t border-border/40">
+                        <td className="px-3 py-1">{p.date}</td>
+                        <td className="px-3 py-1 capitalize">{p.status}</td>
+                        <td className="px-3 py-1">{p.atrasoMinutos ?? '-'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Histórico geral de faltas/atrasos */}
+      <Dialog open={globalHistoryOpen} onOpenChange={(open) => !open && setGlobalHistoryOpen(false)}>
+        <DialogContent className="glass max-w-4xl">
+          <DialogHeader>
+            <DialogTitle>Histórico geral de faltas e atrasos</DialogTitle>
+            <DialogDescription>
+              Visão consolidada de todos os trabalhadores no mês selecionado.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="flex items-center gap-4">
+              <div className="space-y-1">
+                <Label>Mês</Label>
+                <Select
+                  value={globalHistoryMonth}
+                  onValueChange={(value) => {
+                    setGlobalHistoryMonth(value);
+                    loadGlobalHistory(value);
+                  }}
+                >
+                  <SelectTrigger className="w-40 industrial-input">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {Array.from({ length: 6 }).map((_, idx) => {
+                      const d = new Date();
+                      d.setMonth(d.getMonth() - idx);
+                      const m = (d.getMonth() + 1).toString().padStart(2, '0');
+                      const val = `${d.getFullYear()}-${m}`;
+                      return (
+                        <SelectItem key={val} value={val}>
+                          {val}
+                        </SelectItem>
+                      );
+                    })}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex flex-col gap-1 text-sm">
+                <span>Faltas no mês: <strong>{globalTotals.faltas}</strong></span>
+                <span>Atrasos no mês: <strong>{globalTotals.atrasos}</strong></span>
+                <span>Minutos de atraso: <strong>{globalTotals.minutos}</strong></span>
+              </div>
+            </div>
+            <div className="border border-border/50 rounded-lg max-h-96 overflow-auto">
+              {globalHistoryLoading ? (
+                <div className="p-4 text-sm text-muted-foreground">Carregando...</div>
+              ) : globalHistoryRows.length === 0 ? (
+                <div className="p-4 text-sm text-muted-foreground">
+                  Nenhum registro de falta/atraso para o período selecionado.
+                </div>
+              ) : (
+                <table className="w-full text-sm">
+                  <thead className="bg-muted/40">
+                    <tr>
+                      <th className="text-left px-3 py-2">Data</th>
+                      <th className="text-left px-3 py-2">Trabalhador</th>
+                      <th className="text-left px-3 py-2">Status</th>
+                      <th className="text-left px-3 py-2">Atraso (min)</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {globalHistoryRows.map((r, idx) => (
+                      <tr key={`${r.workerId}-${r.date}-${idx}`} className="border-t border-border/40">
+                        <td className="px-3 py-1">{r.date}</td>
+                        <td className="px-3 py-1">{r.workerName}</td>
+                        <td className="px-3 py-1 capitalize">{r.status}</td>
+                        <td className="px-3 py-1">{r.atrasoMinutos ?? '-'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
     </div>

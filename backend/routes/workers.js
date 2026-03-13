@@ -72,7 +72,7 @@ router.put('/:id', async (req, res) => {
     const id = parseInt(req.params.id, 10);
     if (Number.isNaN(id)) return res.status(400).json({ error: 'id inválido' });
 
-    const { name, level, specialtyProcessIds, status, atrasoMinutos, coringa } = req.body || {};
+    const { name, level, specialtyProcessIds, status, atrasoMinutos, coringa, presenceDate, logPresence } = req.body || {};
     const updates = {};
     if (name !== undefined) {
       if (typeof name !== 'string' || !name.trim()) return res.status(400).json({ error: 'name inválido' });
@@ -106,6 +106,20 @@ router.put('/:id', async (req, res) => {
       return res.status(404).json({ error: 'Trabalhador não encontrado' });
     }
 
+    // Registrar histórico de presença, se solicitado
+    if (logPresence && status && (status === 'ausente' || status === 'atrasado')) {
+      const dateStr = presenceDate && typeof presenceDate === 'string' && presenceDate.length >= 10
+        ? presenceDate.slice(0, 10)
+        : new Date().toISOString().slice(0, 10);
+      const presStatus = String(status).toLowerCase();
+      const presAtraso = atrasoMinutos == null ? null : Math.max(0, parseInt(atrasoMinutos, 10) || 0);
+      await query(
+        `INSERT INTO container_flow.worker_presencas (worker_id, data, status, atraso_minutos)
+         VALUES (@worker_id, @data, @status, @atraso_minutos)`,
+        { worker_id: id, data: dateStr, status: presStatus, atraso_minutos: presAtraso }
+      );
+    }
+
     const getResult = await query(`SELECT id, nome, nivel, specialty_process_ids, status, coringa, atraso_minutos FROM container_flow.workers WHERE id = @id`, { id });
     const row = getResult.recordset?.[0];
     res.json(rowToWorker(row));
@@ -128,6 +142,58 @@ router.delete('/:id', async (req, res) => {
   } catch (err) {
     console.error('DELETE /api/workers/:id', err);
     res.status(500).json({ error: err.message || 'Erro ao remover trabalhador' });
+  }
+});
+
+router.get('/:id/presencas', async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (Number.isNaN(id)) return res.status(400).json({ error: 'id inválido' });
+
+    const month = String(req.query.month || '').trim();
+    if (!month || !/^\d{4}-\d{2}$/.test(month)) {
+      return res.status(400).json({ error: 'Parâmetro month (YYYY-MM) é obrigatório' });
+    }
+    const [yearStr, monthStr] = month.split('-');
+    const year = parseInt(yearStr, 10);
+    const m = parseInt(monthStr, 10);
+    if (Number.isNaN(year) || Number.isNaN(m) || m < 1 || m > 12) {
+      return res.status(400).json({ error: 'Parâmetro month inválido' });
+    }
+    const startDate = `${yearStr}-${monthStr}-01`;
+    const endDate = new Date(year, m, 0).toISOString().slice(0, 10);
+
+    const result = await query(
+      `SELECT data, status, atraso_minutos
+       FROM container_flow.worker_presencas
+       WHERE worker_id = @worker_id
+         AND data >= @startDate
+         AND data <= @endDate
+       ORDER BY data`,
+      { worker_id: id, startDate, endDate }
+    );
+    const rows = result.recordset || [];
+    let totalFaltas = 0;
+    let totalAtrasos = 0;
+    let totalMinutosAtraso = 0;
+    const presencas = rows.map((r) => {
+      const s = (r.status || '').toLowerCase();
+      if (s === 'ausente') totalFaltas += 1;
+      if (s === 'atrasado') {
+        totalAtrasos += 1;
+        totalMinutosAtraso += r.atraso_minutos || 0;
+      }
+      return {
+        date: r.data instanceof Date ? r.data.toISOString().slice(0, 10) : String(r.data).slice(0, 10),
+        status: s,
+        atrasoMinutos: r.atraso_minutos ?? null,
+      };
+    });
+
+    res.json({ totalFaltas, totalAtrasos, totalMinutosAtraso, presencas });
+  } catch (err) {
+    console.error('GET /api/workers/:id/presencas', err);
+    res.status(500).json({ error: err.message || 'Erro ao buscar histórico de presença' });
   }
 });
 
